@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import fs from 'fs-extra'
-import path from 'path'
+import path from 'node:path'
 import { ILogCase, IpcGetLogCases, IpcSaveLogCase, IpcDeleteLogCase } from 'common/types'
 import { handleEvent } from 'share/main/lib/util'
 

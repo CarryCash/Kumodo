@@ -34,6 +34,29 @@ import mime from 'licia/mime'
 
 let client: Client
 
+function sanitizeFileName(name: string, fallback = 'file'): string {
+  const raw = String(name ?? '').trim()
+  let base = path.basename(raw)
+
+  base = Array.from(base)
+    .map((char) => {
+      const code = char.codePointAt(0) ?? 0
+      if (code < 32 || /[<>:"/\\|?*]/.test(char)) {
+        return '_'
+      }
+      return char
+    })
+    .join('')
+
+  const cleaned = base.replace(/\s+/g, ' ').replace(/\.+$/g, '').trim()
+
+  if (!cleaned || cleaned === '.' || cleaned === '..') {
+    return fallback
+  }
+
+  return cleaned.slice(0, 200)
+}
+
 const fileSemaphore = new Semaphore(5)
 const waitFileSemaphore = function (): Promise<void> {
   return new Promise((resolve) => {
@@ -50,8 +73,9 @@ const pullFile: IpcPullFile = async function (deviceId, src, dest) {
     const pulls: Promise<void>[] = []
     for (let i = 0, len = files.length; i < len; i++) {
       const file = files[i]
+      const safeName = sanitizeFileName(file.name, 'file')
       pulls.push(
-        pullFile(deviceId, src + '/' + file.name, path.join(dest, file.name))
+        pullFile(deviceId, src + '/' + file.name, path.join(dest, safeName))
       )
     }
     await Promise.all(pulls)
@@ -133,7 +157,7 @@ export async function pullFileData(
 }
 
 const openFile: IpcOpenFile = async function (deviceId, p) {
-  const dest = path.join(os.tmpdir(), path.basename(p))
+  const dest = path.join(os.tmpdir(), sanitizeFileName(path.basename(p), 'file'))
   await pullFile(deviceId, p, dest)
   electronShell.openPath(dest)
 }
@@ -162,7 +186,7 @@ const pushFile: IpcPushFile = async function (
     const files = await fs.readdir(src)
     const pushes: Promise<void>[] = []
     for (let i = 0, len = files.length; i < len; i++) {
-      const name = files[i]
+      const name = sanitizeFileName(files[i], 'file')
       pushes.push(pushFile(deviceId, path.join(src, name), dest + '/' + name))
     }
     await Promise.all(pushes)
@@ -304,18 +328,19 @@ async function readDataAppDir(deviceId: string, path: string) {
         mode: stat.mode,
         size: stat.size,
       })
-    } else {
-      if (contain(segments[0], '.apk')) {
-        const name = segments[0].split('.apk')[0] + '.apk'
-        const stat = await statFile(deviceId, path + name)
-        ret.push({
-          name,
-          directory: false,
-          mtime: stat.mtime,
-          mode: stat.mode,
-          size: stat.size,
-        })
-      }
+      continue
+    }
+
+    if (contain(segments[0], '.apk')) {
+      const name = segments[0].split('.apk')[0] + '.apk'
+      const fileStat = await statFile(deviceId, path + name)
+      ret.push({
+        name,
+        directory: false,
+        mtime: fileStat.mtime,
+        mode: fileStat.mode,
+        size: fileStat.size,
+      })
     }
   }
 
@@ -356,7 +381,7 @@ const regLsLine =
   /^([drwxs-]+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(\d+)\s+(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})\s+(.+)$/
 function parseLsLine(line: string) {
   line = trim(line)
-  const match = line.match(regLsLine)
+  const match = regLsLine.exec(line)
   if (!match) {
     return null
   }
@@ -366,10 +391,10 @@ function parseLsLine(line: string) {
   }
   return {
     name,
-    directory: match[1][0] === 'd',
+    directory: match[1].startsWith('d'),
     mtime: new Date(`${match[6]} ${match[7]}`),
     mode: match[1],
-    size: parseInt(match[5], 10),
+    size: Number.parseInt(match[5], 10),
   }
 }
 
@@ -398,7 +423,8 @@ async function fileShell(
     }
   }
 
-  return shell(deviceId, `${cmd} "${path}"`)
+  const quotedDest = dest ? ` "${dest}"` : ''
+  return shell(deviceId, `${cmd} "${path}"${quotedDest}`)
 }
 
 const statFile: IpcStatFile = async function (deviceId, path) {

@@ -68,11 +68,42 @@ class Protocol {
 class AdbPty extends Emitter {
   private connection: any
   private useV2 = true
+  private closed = false
+
   constructor(connection: any) {
     super()
 
     this.connection = connection
   }
+
+  private cleanup() {
+    if (this.closed) {
+      return
+    }
+    this.closed = true
+
+    try {
+      this.connection?.socket?.removeAllListeners?.()
+    } catch {
+      /* ignore cleanup failures */
+    }
+    try {
+      this.connection?.removeAllListeners?.()
+    } catch {
+      /* ignore cleanup failures */
+    }
+    try {
+      this.connection?.socket?.destroy?.()
+    } catch {
+      /* ignore cleanup failures */
+    }
+    try {
+      this.connection?.end?.()
+    } catch {
+      /* ignore cleanup failures */
+    }
+  }
+
   async init(useV2 = true) {
     const { connection } = this
 
@@ -84,8 +115,11 @@ class AdbPty extends Emitter {
       throw new Error('Failed to create shell')
     }
 
+    const { socket } = connection
+    socket.on('error', () => this.cleanup())
+    socket.on('close', () => this.cleanup())
+
     if (useV2) {
-      const { socket } = connection
       socket.on('readable', () => {
         const buf = socket.read()
         if (buf) {
@@ -99,7 +133,6 @@ class AdbPty extends Emitter {
         }
       })
     } else {
-      const { socket } = connection
       socket.on('readable', () => {
         const buf = socket.read()
         if (buf) {
@@ -109,7 +142,7 @@ class AdbPty extends Emitter {
     }
   }
   resize(cols: number, rows: number) {
-    if (this.useV2) {
+    if (this.useV2 && this.connection?.socket) {
       this.connection.socket.write(
         ShellProtocol.encodeData(
           ShellProtocol.WINDOW_SIZE_CHANGE,
@@ -119,6 +152,9 @@ class AdbPty extends Emitter {
     }
   }
   write(data: string) {
+    if (!this.connection?.socket || this.closed) {
+      return
+    }
     if (this.useV2) {
       this.connection.socket.write(
         ShellProtocol.encodeData(ShellProtocol.STDIN, Buffer.from(data))
@@ -128,7 +164,7 @@ class AdbPty extends Emitter {
     }
   }
   kill() {
-    this.connection.end()
+    this.cleanup()
   }
 }
 
@@ -143,14 +179,26 @@ const createShell: IpcCreateShell = async function (deviceId) {
     await adbPty.init()
   } catch {
     adbPty.kill()
-    const transport = await device.transport()
-    adbPty = new AdbPty(transport)
+    const fallbackTransport = await device.transport()
+    adbPty = new AdbPty(fallbackTransport)
     await adbPty.init(false)
   }
   const sessionId = uniqId('shell')
+  const cleanupSession = () => {
+    if (ptys[sessionId]) {
+      try {
+        ptys[sessionId].kill()
+      } catch {
+        /* ignore cleanup failures */
+      }
+      delete ptys[sessionId]
+    }
+  }
   adbPty.on('data', (data) => {
     window.sendTo('main', 'shellData', sessionId, data)
   })
+  adbPty.on('error', cleanupSession)
+  adbPty.on('close', cleanupSession)
   ptys[sessionId] = adbPty
 
   return sessionId
@@ -165,8 +213,15 @@ const resizeShell: IpcResizeShell = async function (sessionId, cols, rows) {
 }
 
 const killShell: IpcKillShell = async function (sessionId) {
-  ptys[sessionId].kill()
-  delete ptys[sessionId]
+  const shell = ptys[sessionId]
+  if (!shell) {
+    return
+  }
+  try {
+    shell.kill()
+  } finally {
+    delete ptys[sessionId]
+  }
 }
 
 export function init(c: Client) {

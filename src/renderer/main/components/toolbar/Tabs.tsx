@@ -14,7 +14,6 @@ const PANELS: Array<{ id: string; label?: string }> = [
   { id: 'performance' },
   { id: 'shell' },
   { id: 'layout' },
-  { id: 'screenshot' },
   { id: 'logcat' },
   { id: 'webview' },
 ]

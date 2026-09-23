@@ -466,7 +466,7 @@ export default observer(function ForensicModal(props: IProps) {
                               onClick={() => {
                                 if (!device) return
                                 if (!window.confirm(`¿Eliminar datos residuales de ${a.package}?`)) return
-                                main.execAdb(device.id, `rm -rf "${a.path}"`).then(() => {
+                                main.deleteDir(device.id, a.path).then(() => {
                                   notify(`Datos de ${a.package} eliminados`, { icon: 'success' })
                                   setApps((prev) => prev.filter((x) => x.package !== a.package))
                                 }).catch(() => notify('Error al eliminar (puede requerir root)', { icon: 'error' }))

@@ -16,6 +16,7 @@ import isStrBlank from 'licia/isStrBlank'
 import fs from 'fs-extra'
 import { getSettingsStore } from '../store'
 import childProcess from 'node:child_process'
+import path from 'node:path'
 import contain from 'licia/contain'
 import { IpcGetProcesses, IpcReverseTcp, IProcess } from 'common/types'
 
@@ -118,17 +119,27 @@ export async function shell(
 ): Promise<string | string[]> {
   logger.debug('shell', cmd)
 
-  const device = await client.getDevice(deviceId)
-  const cmds: string[] = isStr(cmd) ? [cmd] : cmd
+  let socket: any
+  try {
+    const device = await client.getDevice(deviceId)
+    const cmds: string[] = isStr(cmd) ? [cmd] : cmd
 
-  const socket = await device.shell(cmds.join('\necho "aya_separator"\n'))
-  const output: string = (await Adb.util.readAll(socket)).toString()
+    socket = await device.shell(cmds.join('\necho "aya_separator"\n'))
+    const output: string = (await Adb.util.readAll(socket)).toString()
 
-  if (isStr(cmd)) {
-    return trim(output)
+    if (isStr(cmd)) {
+      return trim(output)
+    }
+
+    return map(output.split('aya_separator'), (val) => trim(val))
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    throw new Error(`ADB shell failed for device ${deviceId}: ${message}`)
+  } finally {
+    if (socket && typeof socket.destroy === 'function') {
+      socket.destroy()
+    }
   }
-
-  return map(output.split('aya_separator'), (val) => trim(val))
 }
 
 export async function forwardTcp(deviceId: string, remote: string) {
@@ -185,7 +196,13 @@ export function getAdbPath() {
     ? resolveResources('adb/adb.exe')
     : resolveResources('adb/adb')
   const adbPath = settingsStore.get('adbPath')
-  if (adbPath === 'adb' || (!isStrBlank(adbPath) && fs.existsSync(adbPath))) {
+  const configuredName = !isStrBlank(adbPath) ? path.basename(adbPath).toLowerCase() : ''
+  const validConfiguredPath =
+    adbPath === 'adb' ||
+    (!isStrBlank(adbPath) &&
+      (configuredName === 'adb' || configuredName === 'adb.exe') &&
+      fs.existsSync(adbPath))
+  if (validConfiguredPath) {
     bin = adbPath
   }
   return bin
@@ -201,7 +218,7 @@ export function spawnAdb(args: string[]): Promise<{
   return new Promise((resolve, reject) => {
     const cp = childProcess.spawn(bin, args, {
       env: { ...process.env },
-      shell: true,
+      shell: false,
     })
 
     let stdout = ''

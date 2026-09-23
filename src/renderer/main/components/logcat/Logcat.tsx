@@ -20,6 +20,7 @@ import toStr from 'licia/toStr'
 import { t } from 'common/util'
 import ToolbarIcon from 'share/renderer/components/ToolbarIcon'
 import contextMenu from 'share/renderer/lib/contextMenu'
+import { notify } from 'share/renderer/lib/util'
 import LogAnalyzer from './LogAnalyzer'
 
 export default observer(function Logcat() {
@@ -27,6 +28,9 @@ export default observer(function Logcat() {
   const [softWrap, setSoftWrap] = useState(false)
   const [paused, setPaused] = useState(false)
   const [analyzerMode, setAnalyzerMode] = useState(false)
+  const [auditVisible, setAuditVisible] = useState(false)
+  const [auditEntries, setAuditEntries] = useState<any[]>([])
+  const [auditLoading, setAuditLoading] = useState(false)
   const [filter, setFilter] = useState<{
     priority?: number
     package?: string
@@ -97,6 +101,20 @@ export default observer(function Logcat() {
       logcatRef.current.clear()
     }
     entriesRef.current = []
+  }
+
+  async function openAuditLog() {
+    setAuditLoading(true)
+    setAuditVisible(true)
+    try {
+      const entries = await main.getAuditLog(100)
+      setAuditEntries(entries)
+    } catch (e: any) {
+      notify('No se pudo cargar el log interno: ' + (e?.message || e), { icon: 'error' })
+      setAuditEntries([])
+    } finally {
+      setAuditLoading(false)
+    }
   }
 
   const onContextMenu = (e: PointerEvent, entry: any) => {
@@ -245,6 +263,12 @@ export default observer(function Logcat() {
         />
         <LunaToolbarSeparator />
         <ToolbarIcon
+          icon="info"
+          title="Auditoría interna"
+          onClick={openAuditLog}
+          disabled={!device}
+        />
+        <ToolbarIcon
           icon="bug"
           state={analyzerMode ? 'hover' : ''}
           title="Analizador de Logs"
@@ -252,6 +276,100 @@ export default observer(function Logcat() {
           disabled={!device}
         />
       </LunaToolbar>
+      {auditVisible && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'rgba(0,0,0,0.45)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 20,
+            padding: 16,
+          }}
+          onClick={() => setAuditVisible(false)}
+        >
+          <div
+            style={{
+              width: 'min(820px, 92vw)',
+              maxHeight: '78vh',
+              overflow: 'auto',
+              background: 'var(--color-bg-container)',
+              borderRadius: 12,
+              border: '1px solid rgba(255,255,255,0.08)',
+              padding: 16,
+              boxShadow: '0 12px 40px rgba(0,0,0,0.35)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <strong>Log interno de auditoría</strong>
+              <button
+                type="button"
+                onClick={() => setAuditVisible(false)}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  color: 'var(--color-text-primary)',
+                  borderRadius: 8,
+                  padding: '6px 10px',
+                  cursor: 'pointer',
+                }}
+              >
+                Cerrar
+              </button>
+            </div>
+            <div style={{ color: 'var(--color-text-secondary)', fontSize: 12, marginBottom: 12 }}>
+              Operaciones críticas, autorizaciones y eventos del chat IA con timestamps.
+            </div>
+            {auditLoading ? (
+              <div style={{ padding: 12, color: 'var(--color-text-secondary)' }}>Cargando log...</div>
+            ) : (
+              <pre
+                style={{
+                  margin: 0,
+                  maxHeight: 520,
+                  overflow: 'auto',
+                  background: 'rgba(0,0,0,0.18)',
+                  borderRadius: 8,
+                  padding: 12,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  fontSize: 11,
+                  lineHeight: 1.5,
+                  color: 'var(--color-text-primary)',
+                }}
+              >
+                {auditEntries.length > 0
+                  ? auditEntries
+                      .map((entry) =>
+                        JSON.stringify(
+                          {
+                            ts: entry.timestamp,
+                            category: entry.category,
+                            action: entry.action,
+                            level: entry.level,
+                            status: entry.status,
+                            deviceId: entry.deviceId,
+                            actor: entry.actor,
+                            authorizedBy: entry.authorizedBy,
+                            source: entry.source,
+                            command: entry.command,
+                            prompt: entry.prompt,
+                            details: entry.details,
+                          },
+                          null,
+                          2
+                        )
+                      )
+                      .join('\n---\n')
+                  : 'No hay registros en el log interno todavía.'}
+              </pre>
+            )}
+          </div>
+        </div>
+      )}
       {analyzerMode ? (
         <LogAnalyzer
           device={device}

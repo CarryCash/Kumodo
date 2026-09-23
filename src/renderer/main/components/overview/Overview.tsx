@@ -18,13 +18,14 @@ import RemoteControllerModal from './RemoteControllerModal'
 import HistoryModal from './HistoryModal'
 import toBool from 'licia/toBool'
 import durationFormat from 'licia/durationFormat'
-import { IDiagnostic } from 'common/types'
+import { IDiagnostic, IImeiVerificationResult } from 'common/types'
 import { createPortal } from 'react-dom'
 import LunaModal from 'luna-modal/react'
 import Battery from '../battery/Battery'
 import Storage from '../storage/Storage'
 import Backup from '../backup/Backup'
 import SecurityAuditModal from './SecurityAuditModal'
+import DiagnosticWizardModal from './DiagnosticWizardModal'
 
 
 export default observer(function Overview() {
@@ -37,6 +38,10 @@ export default observer(function Overview() {
   const [fontAdjustModalVisible, setFontAdjustModalVisible] = useState(false)
   const [historyModalVisible, setHistoryModalVisible] = useState(false)
   const [securityModalVisible, setSecurityModalVisible] = useState(false)
+  const [diagnosticWizardVisible, setDiagnosticWizardVisible] = useState(false)
+  const [imeiModalVisible, setImeiModalVisible] = useState(false)
+  const [imeiInfo, setImeiInfo] = useState<IImeiVerificationResult | null>(null)
+  const [imeiLoading, setImeiLoading] = useState(false)
   const [toolModal, setToolModal] = useState<string | null>(null)
 
   const { device } = store
@@ -65,7 +70,9 @@ export default observer(function Overview() {
           connectedAt: Date.now(),
           notes: ''
         })
-      } catch {}
+      } catch {
+        // Ignorar historial si no está disponible.
+      }
     } catch {
       notify(t('commonErr'), { icon: 'error' })
     }
@@ -141,6 +148,7 @@ export default observer(function Overview() {
           {item('Wi-Fi', overview.wifi, 'wifi')}
           {item(t('ipAddress'), overview.ip, 'browser')}
           {item(t('macAddress'), overview.mac, 'browser')}
+          {item('IMEI', imeiInfo?.imeis?.[0]?.imei || 'Verificar', 'phone', undefined, openImeiModal)}
         </div>
         {diagnostic && (
           <>
@@ -177,11 +185,35 @@ export default observer(function Overview() {
     if (!device || overview.root) {
       return
     }
+    if (!window.confirm('Esto solicitará privilegios root en el dispositivo y puede permitir operaciones destructivas. ¿Continuar?')) {
+      return
+    }
     try {
       await main.root(device.id)
       setTimeout(() => refresh(), 2000)
     } catch {
       notify(t('rootModeErr'), { icon: 'error' })
+    }
+  }
+
+  async function openImeiModal() {
+    if (!device) {
+      return
+    }
+
+    setImeiModalVisible(true)
+    setImeiLoading(true)
+    try {
+      const result = await main.getImeiInfo(device.id)
+      setImeiInfo(result)
+    } catch (error: any) {
+      console.error('Error loading IMEI info:', error)
+      notify(`No se pudo obtener la información de IMEI: ${error?.message || 'desconocido'}`, {
+        icon: 'error',
+      })
+      setImeiInfo(null)
+    } finally {
+      setImeiLoading(false)
     }
   }
 
@@ -244,6 +276,13 @@ Cifrado: ${diagnostic.encryption}
     URL.revokeObjectURL(url)
   }
 
+  let modalTitle = '📦 Respaldo'
+  if (toolModal === 'battery') {
+    modalTitle = '⚡ Batería'
+  } else if (toolModal === 'storage') {
+    modalTitle = '💾 Almacenamiento'
+  }
+
   return (
     <div className={className('panel-with-toolbar', Style.container)}>
       <LunaToolbar className="panel-toolbar">
@@ -289,6 +328,12 @@ Cifrado: ${diagnostic.encryption}
           onClick={() => setSecurityModalVisible(true)}
         />
         <ToolbarIcon
+          icon="info"
+          title="Diagnóstico guiado"
+          disabled={!device}
+          onClick={() => setDiagnosticWizardVisible(true)}
+        />
+        <ToolbarIcon
           icon="save"
           title="Exportar TXT"
           disabled={!diagnostic}
@@ -318,9 +363,90 @@ Cifrado: ${diagnostic.encryption}
         visible={securityModalVisible}
         onClose={() => setSecurityModalVisible(false)}
       />
+      <DiagnosticWizardModal
+        visible={diagnosticWizardVisible}
+        onClose={() => setDiagnosticWizardVisible(false)}
+      />
+      {imeiModalVisible && createPortal(
+        <LunaModal
+          title="IMEI / SIM"
+          width={700}
+          visible={true}
+          onClose={() => setImeiModalVisible(false)}
+        >
+          <div style={{ display: 'grid', gap: 12, minHeight: 200 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+              <div>
+                <strong>Dispositivo:</strong> {imeiInfo?.deviceModel || device?.name || 'Desconocido'}
+              </div>
+              <button
+                type="button"
+                className="luna-modal-button luna-modal-button-primary"
+                onClick={async () => {
+                  if (!device) return
+                  try {
+                    const ok = await main.launchMmiCode(device.id)
+                    notify(ok ? 'Se abrió el MMI *#06# correctamente.' : 'No se pudo abrir el MMI *#06#.', {
+                      icon: ok ? 'success' : 'error',
+                    })
+                  } catch {
+                    notify('No se pudo abrir el código MMI.', { icon: 'error' })
+                  }
+                }}
+              >
+                Abrir *#06#
+              </button>
+            </div>
+
+            {imeiLoading && <div>Cargando datos del IMEI...</div>}
+
+            {!imeiLoading && imeiInfo && imeiInfo.imeis.length > 0 && (
+              <div style={{ display: 'grid', gap: 10 }}>
+                {imeiInfo.imeis.map((entry) => (
+                  <div
+                    key={`${entry.slot}-${entry.imei}`}
+                    style={{
+                      border: '1px solid rgba(255,255,255,0.12)',
+                      borderRadius: 8,
+                      padding: 12,
+                      background: 'rgba(255,255,255,0.02)',
+                    }}
+                  >
+                    <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                      Slot {entry.slot}
+                    </div>
+                    <div style={{ marginBottom: 6 }}>
+                      <strong>IMEI:</strong> {entry.imei}
+                    </div>
+                    <div style={{ marginBottom: 6 }}>
+                      <strong>Validación:</strong>{' '}
+                      {entry.isValidLuhn ? 'Válido (Luhn)' : 'Inválido o no válido'}
+                    </div>
+                    <div style={{ marginBottom: 6 }}>
+                      <strong>TAC:</strong> {entry.tac}
+                    </div>
+                    <div>
+                      <strong>Estado:</strong>{' '}
+                      {entry.isClonedOrMismatch || !entry.hardwareMatched ? 'Posible clonación o desajuste' : 'Normal'}
+                    </div>
+                  </div>
+                ))}
+                <div style={{ opacity: 0.8 }}>
+                  <strong>Dual SIM:</strong> {imeiInfo.dualSim ? 'Sí' : 'No'}
+                </div>
+              </div>
+            )}
+
+            {!imeiLoading && (!imeiInfo || imeiInfo.imeis.length === 0) && (
+              <div>No se pudo recuperar información de IMEI para este dispositivo.</div>
+            )}
+          </div>
+        </LunaModal>,
+        document.body
+      )}
       {toolModal && createPortal(
         <LunaModal
-          title={toolModal === 'battery' ? '⚡ Batería' : toolModal === 'storage' ? '💾 Almacenamiento' : '📦 Respaldo'}
+          title={modalTitle}
           width={850}
           visible={true}
           onClose={() => setToolModal(null)}
@@ -361,10 +487,16 @@ function item(
   let hasDoubleClick = false
 
   return (
-    <div
+    <button
+      type="button"
       className={Style.item}
       onClick={handleClick}
-      style={onClick ? { cursor: 'pointer' } : undefined}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          handleClick()
+        }
+      }}
       onDoubleClick={() => {
         if (!onDoubleClick) {
           return
@@ -372,12 +504,13 @@ function item(
         hasDoubleClick = true
         onDoubleClick()
       }}
+      style={onClick ? { cursor: 'pointer' } : undefined}
     >
       <div className={Style.title}>
         <span className={`icon-${icon}`}></span>
         &nbsp;{title}
       </div>
       <div className={Style.value}>{value || t('unknown')}</div>
-    </div>
+    </button>
   )
 }

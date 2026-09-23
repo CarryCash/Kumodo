@@ -63,7 +63,7 @@ export default observer(function Backup() {
       setResult(res)
 
       if (res.status === 'done') {
-        setLog(prev => prev + `\n✅ Respaldo completado.\nRuta: ${res.outputPath}\nChecksum SHA-256: ${res.checksum}\n`)
+        setLog(prev => prev + `\n✅ Respaldo completado.\nRuta: ${res.outputPath}\nChecksum SHA-256: ${res.checksum}\nManifest: ${res.manifestPath || 'No disponible'}\nCadena de custodia: ${res.chainOfCustodyPath || 'No disponible'}\nResponsable: ${res.evidenceBy || 'Desconocido'}\n`)
       } else {
         setLog(prev => prev + `\n❌ Error: ${res.error}\n`)
       }
@@ -146,9 +146,15 @@ export default observer(function Backup() {
               <div className={className(Style.resultBox, Style.resultOk)}>
                 <strong>Respaldo exitoso</strong> — Guardado en: <code>{result.outputPath}</code>
                 <div className={Style.checksumRow}>
-                   Checksum SHA-256 (parcial): <strong>{result.checksum}</strong>
+                  Checksum SHA-256 (parcial): <strong>{result.checksum}</strong>
                   <br />
-                  <small>Guarda este checksum para verificar la integridad del respaldo en el futuro.</small>
+                  Manifest: <strong>{result.manifestPath || 'No disponible'}</strong>
+                  <br />
+                  Cadena de custodia: <strong>{result.chainOfCustodyPath || 'No disponible'}</strong>
+                  <br />
+                  Responsable: <strong>{result.evidenceBy || 'Desconocido'}</strong>
+                  <br />
+                  <small>Se registran hashes por archivo, sello SHA-256 y auditoría de acceso para autenticidad forense.</small>
                 </div>
               </div>
             )}

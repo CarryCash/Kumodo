@@ -1,6 +1,53 @@
 import store from '../store'
 
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent'
+import { extractGeminiTextPayload, normalizeGeminiCommand } from './geminiResponse'
+
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent'
+
+export { extractGeminiTextPayload, normalizeGeminiCommand }
+
+export async function testGeminiConnection(apiKey?: string): Promise<{ ok: boolean; message: string }> {
+  const key = (apiKey ?? store.settings.geminiApiKey ?? '').trim()
+  if (!key) {
+    return { ok: false, message: 'No hay clave de Gemini guardada.' }
+  }
+
+  try {
+    const response = await fetch(`${GEMINI_API_URL}?key=${key}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: 'Responde solo con OK' }] }],
+        generationConfig: {
+          temperature: 0,
+          maxOutputTokens: 32,
+          responseMimeType: 'text/plain',
+        },
+      }),
+    })
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      return {
+        ok: false,
+        message: `La llamada falló: ${err.error?.message || response.statusText || 'respuesta no válida'}`,
+      }
+    }
+
+    const data = await response.json()
+    const content = data.candidates?.[0]?.content?.parts?.[0]?.text
+    if (!content) {
+      return { ok: false, message: 'Gemini respondió sin contenido útil.' }
+    }
+
+    return { ok: true, message: `Conexión correcta: ${content.trim().slice(0, 32)}` }
+  } catch (error: any) {
+    return {
+      ok: false,
+      message: `No se pudo conectar a Gemini: ${error?.message || 'error desconocido'}`,
+    }
+  }
+}
 
 export async function askGeminiForAdbCommand(userPrompt: string): Promise<{ command: string; explanation: string }> {
   const apiKey = store.settings.geminiApiKey
@@ -11,8 +58,10 @@ export async function askGeminiForAdbCommand(userPrompt: string): Promise<{ comm
   const systemPrompt = `Eres un asistente experto en Android Debug Bridge (ADB).
 Tu única función es recibir una solicitud en lenguaje natural y devolver el comando ADB EXACTO para ejecutarla, junto con una brevísima explicación.
 IMPORTANTE: 
-- El comando será pasado al ejecutor de ADB. Usa comandos de shell directos (ej: 'pm clear com.whatsapp' o 'input text hola').
+- El comando será pasado al ejecutor de ADB. Usa solo comandos ADB permitidos y directos (ej: 'pm clear com.whatsapp' o 'input text hola').
 - No pongas 'adb shell' al principio, asume que ya estás en el shell, a menos que el comando sea específico de adb como 'adb reboot' (en cuyo caso pon 'reboot').
+- Nunca inventes operadores de shell ni concatenaciones como &&, ||, ;, $, backticks, >, <, pipe, ni comandos no permitidos.
+- Si no estás seguro, responde con un comando seguro y simple dentro de la lista permitida o devuelve un error claro.
 - Formato de respuesta OBLIGATORIO en JSON:
 {
   "command": "comando",
@@ -55,19 +104,26 @@ Solo devuelve un bloque JSON válido y nada más.`
   }
 
   const data = await response.json()
-  const content = data.candidates?.[0]?.content?.parts?.[0]?.text
-  
+  const content = extractGeminiTextPayload(data)
+
   if (!content) {
     throw new Error('Respuesta vacía de la IA')
   }
 
   try {
-    const result = JSON.parse(content)
-    return {
-      command: result.command || '',
-      explanation: result.explanation || 'Sin explicación'
+    const parsed = JSON.parse(content)
+    const command = normalizeGeminiCommand(parsed.command || content)
+    const explanation = parsed.explanation || 'Sin explicación'
+
+    if (!command) {
+      throw new Error('La IA no devolvió un comando válido')
     }
-  } catch (e) {
+
+    return {
+      command,
+      explanation,
+    }
+  } catch {
     throw new Error('La IA no devolvió un JSON válido: ' + content)
   }
 }
@@ -142,6 +198,109 @@ DEVUELVE SOLO el JSON array, sin texto adicional ni markdown.`
   }
 }
 
+export interface IDiagnosticAiResult {
+  summary: string
+  hypotheses: Array<{
+    title: string
+    detail: string
+    confidence: 'alta' | 'media' | 'baja'
+  }>
+  nextActions: string[]
+}
+
+export async function diagnoseDeviceWithGemini(input: {
+  symptom: string
+  deviceName?: string
+  brand?: string
+  model?: string
+  batteryLevel?: number
+  batteryTemperature?: number
+  batteryVoltage?: number
+  storagePercent?: number
+  memPercent?: number
+  root?: boolean
+  rawLog?: string
+}): Promise<IDiagnosticAiResult | null> {
+  const apiKey = store.settings.geminiApiKey
+  if (!apiKey) return null
+
+  const systemPrompt = `Eres un experto en diagnóstico de dispositivos Android y soporte técnico de hardware/software.
+Analiza SOLO los datos reales del dispositivo que te enviamos.
+No inventes valores ni datos de prueba, y no sueltes conclusiones sin base en las cifras y el logcat.
+
+Debes responder exactamente con un JSON válido con este esquema:
+{
+  "summary": "texto breve",
+  "hypotheses": [
+    { "title": "titulo", "detail": "explicación clara", "confidence": "alta|media|baja" }
+  ],
+  "nextActions": ["acción 1", "acción 2"]
+}
+
+Usa la información que te llega:
+- síntoma del usuario
+- marca/modelo
+- nivel de batería, temperatura, voltaje
+- uso de memoria y almacenamiento
+- si el dispositivo está rooteado
+- logcat reciente
+
+Si no hay evidencia suficiente, indica que la causa no está clara y sugiere pruebas de confirmación.
+Devuelve solo JSON y nada más.`
+
+  const body = {
+    systemInstruction: { parts: [{ text: systemPrompt }] },
+    contents: [{
+      parts: [{ text: JSON.stringify({
+        symptom: input.symptom,
+        device: `${input.brand || ''} ${input.model || ''}`.trim() || input.deviceName || 'Dispositivo Android',
+        batteryLevel: input.batteryLevel,
+        batteryTemperature: input.batteryTemperature,
+        batteryVoltage: input.batteryVoltage,
+        storagePercent: input.storagePercent,
+        memPercent: input.memPercent,
+        root: input.root,
+        rawLog: input.rawLog || '',
+      }, null, 2) }]
+    }],
+    generationConfig: {
+      temperature: 0.2,
+      responseMimeType: 'application/json',
+    },
+  }
+
+  try {
+    const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+
+    if (!response.ok) return null
+
+    const data = await response.json()
+    const content = data.candidates?.[0]?.content?.parts?.[0]?.text
+    if (!content) return null
+
+    const parsed = JSON.parse(content)
+    if (!parsed || typeof parsed !== 'object') return null
+
+    return {
+      summary: typeof parsed.summary === 'string' ? parsed.summary : 'Diagnóstico generado con los datos reales del dispositivo.',
+      hypotheses: Array.isArray(parsed.hypotheses) ? parsed.hypotheses.map((item: any) => ({
+        title: String(item?.title || 'Hipótesis detectada'),
+        detail: String(item?.detail || 'Se requiere más contexto para confirmar.'),
+        confidence: ['alta', 'media', 'baja'].includes(item?.confidence) ? item.confidence : 'media',
+      })) : [],
+      nextActions: Array.isArray(parsed.nextActions)
+        ? parsed.nextActions.map(String).filter(Boolean)
+        : [],
+    }
+  } catch {
+    return null
+  }
+}
+
 export interface IDebloatAiResult {
   package: string
   name: string
@@ -204,7 +363,7 @@ Responde ÚNICAMENTE con el bloque JSON array válido.`
 
     const map: Record<string, IDebloatAiResult> = {}
     for (const item of parsed) {
-      if (item && item.package) {
+      if (item?.package) {
         const cat =
           item.category === 'safe' || item.category === 'danger'
             ? item.category

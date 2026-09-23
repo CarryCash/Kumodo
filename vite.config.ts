@@ -1,8 +1,8 @@
 import { defineConfig, UserConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import fs from 'fs-extra'
-import { fileURLToPath } from 'url'
-import path from 'path'
+import { fileURLToPath } from 'node:url'
+import path from 'node:path'
 
 export const alias = {
   common: path.resolve(__dirname, 'src/common'),

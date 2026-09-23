@@ -2,7 +2,6 @@ import Toolbar from './components/toolbar/Toolbar'
 import Logcat from './components/logcat/Logcat'
 import Shell from './components/shell/Shell'
 import Overview from './components/overview/Overview'
-import Screenshot from './components/screenshot/Screenshot'
 import Process from './components/process/Process'
 import Performance from './components/performance/Performance'
 import Webview from './components/webview/Webview'
@@ -33,9 +32,6 @@ export default observer(function App() {
             </Panel>
             <Panel panel="application">
               <Application />
-            </Panel>
-            <Panel panel="screenshot">
-              <Screenshot />
             </Panel>
             <Panel panel="logcat">
               <Logcat />

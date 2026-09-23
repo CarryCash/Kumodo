@@ -87,6 +87,8 @@ import {
   IpcScanJunk,
   IpcCleanJunk,
   IpcAuditSecurity,
+  IpcWriteAuditLog,
+  IpcGetAuditLog,
 } from 'common/types'
 import { IpcGetStore, IpcSetStore } from 'share/common/types'
 import mainObj from 'share/preload/main'
@@ -183,6 +185,8 @@ export default Object.assign(mainObj, {
   scanJunk: invoke<IpcScanJunk>('scanJunk'),
   cleanJunk: invoke<IpcCleanJunk>('cleanJunk'),
   auditSecurity: invoke<IpcAuditSecurity>('auditSecurity'),
+  writeAuditLog: invoke<IpcWriteAuditLog>('writeAuditLog'),
+  getAuditLog: invoke<IpcGetAuditLog>('getAuditLog'),
   getImeiInfo: invoke<IpcGetImeiInfo>('getImeiInfo'),
   launchMmiCode: invoke<IpcLaunchMmiCode>('launchMmiCode'),
   getMediaFiles: invoke<IpcGetMediaFiles>('getMediaFiles'),

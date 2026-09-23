@@ -29,4 +29,15 @@ Queremos expresar nuestro profundo agradecimiento a los creadores y contribuyent
 
 ## Licencia
 
-Este proyecto está sujeto a los términos de licencia original de AYA (AGPL-3.0). Por favor, revisa el archivo correspondiente en el repositorio para más detalles.
+Este repositorio se distribuye bajo la licencia de Kumodo: GNU Affero General Public License v3.0 (AGPL-3.0). El archivo [LICENSE](LICENSE) en la raíz aplica al código y al paquete principal del proyecto.
+
+No obstante, este proyecto incluye componentes, dependencias y binarios de terceros con sus propios términos. En particular:
+
+* `@devicefarmer/adbkit` y otros componentes del ecosistema Android/ADB suelen estar bajo licencia Apache 2.0.
+* Las bibliotecas de frontend y Electron (React, Vite, Electron, etc.) suelen usar MIT o licencias compatibles con MIT.
+* Los servicios de Gemini / Google AI están sujetos a los términos de uso y API de Google, no a una licencia de código abierto del repositorio.
+* Los binarios de ffmpeg y componentes del SDK de Android / AOSP deben respetar sus licencias originales y sus condiciones de redistribución.
+
+Por tanto, la licencia del repositorio no reubica ni reemplaza las licencias de terceros: se deben conservar los avisos, licencias y condiciones aplicables de cada componente. Para un resumen más detallado, consulta [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+> Nota: si partes de Kumodo derivan de AYA u otros proyectos de terceros, debes mantener sus avisos legales y comprobar que la combinación de licencias sea compatible con tu distribución concreta. Este repositorio no sustituye el asesoramiento legal profesional.

@@ -44,7 +44,6 @@ import {
   IDiagnostic,
   IpcGetBatteryStats,
   IpcResetBatteryStats,
-  IStorageRamStats,
   IpcGetStorageRamStats,
   IJunkItem,
   IpcScanJunk,
@@ -53,6 +52,7 @@ import {
 import * as history from './history'
 import * as logCases from './logCases'
 import * as backup from './backup'
+import * as audit from './audit'
 import { auditSecurity } from './security'
 import { getImeiInfo, launchMmiCode } from './imei'
 import {
@@ -85,6 +85,88 @@ import isMac from 'licia/isMac'
 import sleep from 'licia/sleep'
 
 const logger = log('adb')
+
+function normalizeSsid(value: string) {
+  let normalized = value.trim()
+  if (normalized.startsWith('"') || normalized.startsWith("'")) {
+    normalized = normalized.slice(1)
+  }
+  if (normalized.endsWith('"') || normalized.endsWith("'")) {
+    normalized = normalized.slice(0, -1)
+  }
+  if (normalized.endsWith(',')) {
+    normalized = normalized.slice(0, -1)
+  }
+  return normalized.trim()
+}
+
+const allowedShellCommands = new Set([
+  'am',
+  'cat',
+  'df',
+  'dumpsys',
+  'echo',
+  'getprop',
+  'id',
+  'ifconfig',
+  'input',
+  'ip',
+  'logcat',
+  'ls',
+  'netstat',
+  'ping',
+  'pm',
+  'ps',
+  'settings',
+  'svc',
+  'top',
+  'uptime',
+  'wm',
+])
+
+const allowedAdbCommands = new Set(['reboot'])
+const safeCommandCharacters = /^[a-zA-Z0-9_./:=+%\- \t]+$/
+const dangerousPatterns = [
+  /(\s|^)(rm|delete|erase|wipe|format|fastboot|dd|mkfs|mount|umount|chmod|chown)(\s|$)/i,
+  /(factory\s*reset|data\s+wipe|reboot\s+into)/i,
+]
+
+function validateExecAdbCommand(command: string) {
+  const normalized = command.trim()
+  if (!normalized || normalized.length > 512) {
+    throw new Error('Comando ADB rechazado: vacío o demasiado largo')
+  }
+
+  const hasControlChars = Array.from(normalized).some((char) => {
+    const code = char.codePointAt(0) ?? 0
+    return code < 32 || code === 127
+  })
+
+  if (hasControlChars || /[;&|`$<>]/.test(normalized)) {
+    throw new Error('Comando ADB rechazado: contiene caracteres shell o de control no permitidos')
+  }
+
+  if (!safeCommandCharacters.test(normalized)) {
+    throw new Error('Comando ADB rechazado: contiene caracteres o formato no permitido')
+  }
+
+  if (dangerousPatterns.some((pattern) => pattern.test(normalized))) {
+    throw new Error('Comando ADB rechazado: operación destructiva o no permitida')
+  }
+
+  const args = normalized.split(/\s+/)
+  const commandName = args[0] === 'adb' ? args[1] : args[0]
+  const allowedCommands = args[0] === 'adb' ? allowedAdbCommands : allowedShellCommands
+  if (!commandName || !allowedCommands.has(commandName)) {
+    throw new Error(`Comando ADB rechazado: "${commandName || normalized}" no está permitido`)
+  }
+
+  if (args[0] === 'adb' && args.length > 3) {
+    throw new Error('Comando ADB rechazado: argumentos no permitidos')
+  }
+
+  return { normalized, isAdbCommand: args[0] === 'adb' }
+}
 
 const settingsStore = getSettingsStore()
 
@@ -120,7 +202,7 @@ const getDevices: IpcGetDevices = async function () {
 }
 
 async function getOverview(deviceId: string) {
-  const device = await client.getDevice(deviceId)
+  const device = client.getDevice(deviceId)
   const properties = await device.getProperties()
   const cpus = await getCpus(deviceId, false)
   const [kernelVersion, fontScale, wifi] = await shell(deviceId, [
@@ -129,10 +211,15 @@ async function getOverview(deviceId: string) {
     'dumpsys wifi',
   ])
 
-  let ssidMatch = wifi.match(/mWifiInfo\s+SSID: "?(.+?)"?,/)
-  if (ssidMatch && ssidMatch[1] === '<unknown ssid>') {
-    ssidMatch = null
-  }
+  const ssid = (() => {
+    const index = wifi.indexOf('mWifiInfo')
+    if (index < 0) return ''
+    const block = wifi.slice(index)
+    const ssidIndex = block.indexOf('SSID:')
+    if (ssidIndex < 0) return ''
+    const raw = normalizeSsid(block.slice(ssidIndex + 5))
+    return raw === '<unknown ssid>' ? '' : raw
+  })()
 
   return {
     name: getMarketName(properties) || properties['ro.product.name'],
@@ -144,7 +231,7 @@ async function getOverview(deviceId: string) {
     cpuNum: cpus.length,
     kernelVersion,
     fontScale: fontScale === 'null' ? 0 : toNum(fontScale),
-    wifi: ssidMatch ? ssidMatch[1] : '',
+    wifi: ssid,
     root: await isRooted(deviceId),
     ...(await getIpAndMac(deviceId)),
     ...(await getStorage(deviceId)),
@@ -157,13 +244,11 @@ async function getIpAndMac(deviceId: string) {
   let ip = ''
   let mac = ''
   const wlan0 = await shell(deviceId, 'ip addr show wlan0')
-  const ipMatch = wlan0.match(/inet (\d+\.\d+\.\d+\.\d+)/)
+  const ipMatch = /inet (\d+\.\d+\.\d+\.\d+)/.exec(wlan0)
   if (ipMatch) {
     ip = ipMatch[1]
   }
-  const macMatch = wlan0.match(
-    /link\/ether (([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2}))/
-  )
+  const macMatch = /link\/ether (([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2}))/ .exec(wlan0)
   if (macMatch) {
     mac = macMatch[1]
   }
@@ -247,15 +332,28 @@ async function getBattery(deviceId: string) {
 }
 
 const screencap: IpcScreencap = async function (deviceId) {
-  const { exec } = require('child_process')
-  const { promisify } = require('util')
-  const execAsync = promisify(exec)
   const adbPath = getAdbPath()
   try {
-    const { stdout } = await execAsync(`"${adbPath}" -s ${deviceId} exec-out screencap -p`, { encoding: 'buffer', maxBuffer: 10 * 1024 * 1024 })
-    return stdout.toString('base64')
-  } catch (err) {
-    const device = await client.getDevice(deviceId)
+    const chunks: Buffer[] = []
+    await new Promise<void>((resolve, reject) => {
+      const child = childProcess.spawn(
+        adbPath,
+        ['-s', deviceId, 'exec-out', 'screencap', '-p'],
+        { env: { ...process.env }, shell: false }
+      )
+      child.stdout.on('data', (chunk: Buffer) => chunks.push(chunk))
+      child.on('error', reject)
+      child.on('close', (code) => {
+        if (code === 0) {
+          resolve()
+        } else {
+          reject(new Error(`screencap failed with exit code ${code}`))
+        }
+      })
+    })
+    return Buffer.concat(chunks).toString('base64')
+  } catch {
+    const device = client.getDevice(deviceId)
     const data = await device.screencap()
     const buf = await Adb.util.readAll(data)
     return buf.toString('base64')
@@ -303,8 +401,8 @@ async function getMemory(deviceId: string) {
     freeMatch = getPropValue('MemFree', memInfo)
   }
   if (totalMatch && freeMatch) {
-    memTotal = parseInt(totalMatch, 10) * 1024
-    memFree = parseInt(freeMatch, 10) * 1024
+    memTotal = Number.parseInt(totalMatch, 10) * 1024
+    memFree = Number.parseInt(freeMatch, 10) * 1024
   }
 
   return {
@@ -318,10 +416,10 @@ async function getStorage(deviceId: string) {
   let storageTotal = 0
   let storageFree = 0
 
-  const match = storageInfo.match(new RegExp('Data-Free: (\\d+)K / (\\d+)K'))
+  const match = /Data-Free:\s*(\d+)K\s*\/\s*(\d+)K/.exec(storageInfo)
   if (match) {
-    storageFree = parseInt(match[1], 10) * 1024
-    storageTotal = parseInt(match[2], 10) * 1024
+    storageFree = Number.parseInt(match[1], 10) * 1024
+    storageTotal = Number.parseInt(match[2], 10) * 1024
   }
 
   return {
@@ -335,7 +433,8 @@ function getPropValue(key: string, str: string) {
   for (let i = 0, len = lines.length; i < len; i++) {
     const line = trim(lines[i])
     if (startWith(line, key)) {
-      return trim(line.replace(/.*:/, ''))
+      const index = line.indexOf(':')
+      return index === -1 ? trim(line) : trim(line.slice(index + 1))
     }
   }
 
@@ -369,24 +468,26 @@ async function openAdbCli() {
   } else if (isWindows) {
     // Microsoft store app permission issue workaround
     const newCwd = getUserDataPath('adb')
-    if (!(await fs.existsSync(newCwd))) {
+    if (!fs.existsSync(newCwd)) {
       await fs.copy(cwd, newCwd)
     }
     cwd = newCwd
   }
 
   if (isMac) {
-    const child = childProcess.spawn('open', ['-a', 'Terminal', cwd], {
+    const child = childProcess.spawn('/usr/bin/open', ['-a', 'Terminal', cwd], {
       stdio: 'ignore',
     })
     child.unref()
   } else if (isWindows) {
-    const child = childProcess.exec('start cmd', {
+    const child = childProcess.spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/c', 'start', '', 'cmd.exe'], {
       cwd,
+      shell: false,
+      stdio: 'ignore',
     })
     child.unref()
   } else {
-    const child = childProcess.spawn('x-terminal-emulator', ['-w', cwd], {
+    const child = childProcess.spawn('/usr/bin/x-terminal-emulator', ['-w', cwd], {
       stdio: 'ignore',
     })
     child.unref()
@@ -398,12 +499,12 @@ async function root(deviceId: string) {
   if (contain(id, 'uid=0')) {
     return
   }
-  const device = await client.getDevice(deviceId)
+  const device = client.getDevice(deviceId)
   await device.root()
 }
 
 async function startWireless(deviceId: string) {
-  const device = await client.getDevice(deviceId)
+  const device = client.getDevice(deviceId)
   const { ip } = await getIpAndMac(deviceId)
   const port = await device.tcpip(5555)
   await sleep(500)
@@ -416,7 +517,7 @@ async function restartAdbServer() {
 }
 
 const getDiagnostic: IpcGetDiagnostic = async function (deviceId): Promise<IDiagnostic> {
-  const device = await client.getDevice(deviceId)
+  const device = client.getDevice(deviceId)
   const properties = await device.getProperties()
   const cpus = await getCpus(deviceId, false)
   const [kernelVersion, wifi] = await shell(deviceId, ['uname -r', 'dumpsys wifi'])
@@ -430,36 +531,43 @@ const getDiagnostic: IpcGetDiagnostic = async function (deviceId): Promise<IDiag
   const wlan0 = await shell(deviceId, 'ip addr show wlan0')
 
   // Memory
-  const memTotalMatch = memInfo.match(/MemTotal:\s+(\d+)/)
-  const memFreeMatch = memInfo.match(/MemAvailable:\s+(\d+)/) || memInfo.match(/MemFree:\s+(\d+)/)
-  const memTotal = memTotalMatch ? parseInt(memTotalMatch[1], 10) * 1024 : 0
-  const memFree = memFreeMatch ? parseInt(memFreeMatch[1], 10) * 1024 : 0
+  const memTotalMatch = /MemTotal:\s+(\d+)/.exec(memInfo)
+  const memFreeMatch = /MemAvailable:\s+(\d+)/.exec(memInfo) || /MemFree:\s+(\d+)/.exec(memInfo)
+  const memTotal = memTotalMatch ? Number.parseInt(memTotalMatch[1], 10) * 1024 : 0
+  const memFree = memFreeMatch ? Number.parseInt(memFreeMatch[1], 10) * 1024 : 0
 
   // Storage
-  const storageMatch = diskStats.match(/Data-Free: (\d+)K \/ (\d+)K/)
-  const storageTotal = storageMatch ? parseInt(storageMatch[2], 10) * 1024 : 0
-  const storageFree = storageMatch ? parseInt(storageMatch[1], 10) * 1024 : 0
+  const storageMatch = /Data-Free:\s*(\d+)K\s*\/\s*(\d+)K/.exec(diskStats)
+  const storageTotal = storageMatch ? Number.parseInt(storageMatch[2], 10) * 1024 : 0
+  const storageFree = storageMatch ? Number.parseInt(storageMatch[1], 10) * 1024 : 0
 
   // Battery
-  const batteryLevel = parseInt(battery.match(/level: (\d+)/)?.[1] || '0', 10)
-  const batteryVoltage = parseInt(battery.match(/voltage: (\d+)/)?.[1] || '0', 10)
-  const batteryTemperature = parseInt(battery.match(/temperature: (\d+)/)?.[1] || '0', 10)
+  const batteryLevel = Number.parseInt(/level:\s*(\d+)/.exec(battery)?.[1] || '0', 10)
+  const batteryVoltage = Number.parseInt(/voltage:\s*(\d+)/.exec(battery)?.[1] || '0', 10)
+  const batteryTemperature = Number.parseInt(/temperature:\s*(\d+)/.exec(battery)?.[1] || '0', 10)
 
   // Network
-  const ssidMatch = wifi.match(/mWifiInfo\s+SSID: "?(.+?)"?,/)
-  const wifiSsid = ssidMatch && ssidMatch[1] !== '<unknown ssid>' ? ssidMatch[1] : ''
-  const ipMatch = wlan0.match(/inet (\d+\.\d+\.\d+\.\d+)/)
-  const macMatch = wlan0.match(/link\/ether (([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2}))/)
+  const wifiSsid = (() => {
+    const index = wifi.indexOf('mWifiInfo')
+    if (index < 0) return ''
+    const block = wifi.slice(index)
+    const ssidIndex = block.indexOf('SSID:')
+    if (ssidIndex < 0) return ''
+    const raw = normalizeSsid(block.slice(ssidIndex + 5))
+    return raw === '<unknown ssid>' ? '' : raw
+  })()
+  const ipMatch = /inet (\d+\.\d+\.\d+\.\d+)/.exec(wlan0)
+  const macMatch = /link\/ether (([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2}))/.exec(wlan0)
 
   // Screen
   const hasOverrideRes = uptime.includes('Override') || wmSize.includes('Override')
-  const physRes = (wmSize.match(/Physical size: (.+)/) || [])[1] || ''
-  const overrideRes = (wmSize.match(/Override size: (.+)/) || [])[1] || ''
-  const physDensity = (wmDensity.match(/Physical density: (.+)/) || [])[1] || ''
-  const overrideDensity = (wmDensity.match(/Override density: (.+)/) || [])[1] || ''
+  const physRes = /Physical size:\s*(.+)/.exec(wmSize)?.[1] || ''
+  const overrideRes = /Override size:\s*(.+)/.exec(wmSize)?.[1] || ''
+  const physDensity = /Physical density:\s*(.+)/.exec(wmDensity)?.[1] || ''
+  const overrideDensity = /Override density:\s*(.+)/.exec(wmDensity)?.[1] || ''
 
   // Uptime
-  const uptimeSeconds = Math.round(parseFloat((uptime.split(' ') || ['0'])[0]) * 1000)
+  const uptimeSeconds = Math.round(Number.parseFloat((uptime.split(' ') || ['0'])[0]) * 1000)
 
   // Root
   const idOutput = await shell(deviceId, 'id')
@@ -517,7 +625,7 @@ const getStorageRamStats: IpcGetStorageRamStats = async function (deviceId) {
     const cols = dfLines[1].trim().split(/\s+/)
     if (cols.length >= 4) {
       const parseSize = (sizeStr: string) => {
-        let val = parseFloat(sizeStr)
+        let val = Number.parseFloat(sizeStr)
         if (sizeStr.includes('G')) val *= 1024 * 1024 * 1024
         else if (sizeStr.includes('M')) val *= 1024 * 1024
         else if (sizeStr.includes('K')) val *= 1024
@@ -535,10 +643,10 @@ const getStorageRamStats: IpcGetStorageRamStats = async function (deviceId) {
   const availMatch = getPropValue('MemAvailable', memInfo)
   const cachedMatch = getPropValue('Cached', memInfo)
 
-  const memTotal = totalMatch ? parseInt(totalMatch, 10) * 1024 : 0
-  const memFree = freeMatch ? parseInt(freeMatch, 10) * 1024 : 0
-  const memAvailable = availMatch ? parseInt(availMatch, 10) * 1024 : memFree
-  const memCached = cachedMatch ? parseInt(cachedMatch, 10) * 1024 : 0
+  const memTotal = totalMatch ? Number.parseInt(totalMatch, 10) * 1024 : 0
+  const memFree = freeMatch ? Number.parseInt(freeMatch, 10) * 1024 : 0
+  const memAvailable = availMatch ? Number.parseInt(availMatch, 10) * 1024 : memFree
+  const memCached = cachedMatch ? Number.parseInt(cachedMatch, 10) * 1024 : 0
 
   // Apps consumption via dumpsys meminfo
   const appsRamConsumption: Array<{ packageName: string; pss: number; type: string }> = []
@@ -555,14 +663,13 @@ const getStorageRamStats: IpcGetStorageRamStats = async function (deviceId) {
     }
     if (inAppSummary) {
       if (t === '' || t.includes('Total PSS by OOM adjustment:')) {
-        inAppSummary = false
         break
       }
       // Example line: 125000K: com.example.app (pid 123)
-      const match = t.match(/([\d,]+)K:\s+([\w.]+)\s+\(pid/)
+      const match = /(\d[\d,]*)K:\s+([\w.]+)\s+\(pid/.exec(t)
       if (match) {
         appsRamConsumption.push({
-          pss: parseInt(match[1].replace(/,/g, ''), 10) * 1024,
+          pss: Number.parseInt(match[1].replaceAll(',', ''), 10) * 1024,
           packageName: match[2],
           type: 'App'
         })
@@ -643,15 +750,14 @@ const getBatteryStats: IpcGetBatteryStats = async function (deviceId) {
     }
     if (inPowerUse) {
       if (t === '' || t.startsWith('All partial wake locks')) {
-        inPowerUse = false
         break
       }
       // Example line: Uid 1000: 12.5 ( cpu=12.0 wake=0.5 )
-      const match = t.match(/Uid (\w+): ([\d.]+)/)
+      const match = /Uid (\w+): ([\d.]+)/.exec(t)
       if (match) {
         appsConsumption.push({
           uid: match[1],
-          percent: parseFloat(match[2]),
+          percent: Number.parseFloat(match[2]),
           packageName: `UID ${match[1]}`
         })
       }
@@ -666,7 +772,7 @@ const getBatteryStats: IpcGetBatteryStats = async function (deviceId) {
     health,
     isCharging,
     technology: getPropValue('technology', result) || 'Unknown',
-    appsConsumption: appsConsumption.sort((a, b) => b.percent - a.percent).slice(0, 10),
+    appsConsumption: [...appsConsumption].sort((a, b) => b.percent - a.percent).slice(0, 10),
     warnings,
   }
 }
@@ -676,14 +782,62 @@ const resetBatteryStats: IpcResetBatteryStats = async function (deviceId) {
 }
 
 export const execAdb = async function (deviceId: string, command: string) {
-  // Use spawnAdb if the command starts with 'adb ', otherwise use shell
-  if (command.startsWith('adb ')) {
-    const args = command.substring(4).split(' ').filter(Boolean)
-    return await spawnAdb(['-s', deviceId, ...args])
+  const startedAt = Date.now()
+  const actor = process.env.USER || process.env.USERNAME || 'desktop-user'
+
+  try {
+    const validated = validateExecAdbCommand(command)
+    const normalizedCommand = validated.normalized
+
+    await audit.appendAuditEntry({
+      category: 'adb',
+      action: 'execute_adb_command',
+      level: 'info',
+      status: 'pending',
+      deviceId,
+      actor,
+      command: normalizedCommand,
+      source: 'main',
+      details: 'Comando ADB ejecutado desde la app',
+    })
+
+    let output: string
+    if (validated.isAdbCommand) {
+      const args = normalizedCommand.substring(4).split(/\s+/).filter(Boolean)
+      const result = await spawnAdb(['-s', deviceId, ...args])
+      output = result.stdout || result.stderr || ''
+    } else {
+      const result = await shell(deviceId, normalizedCommand)
+      output = Array.isArray(result) ? result.join('\n') : result
+    }
+
+    await audit.appendAuditEntry({
+      category: 'adb',
+      action: 'execute_adb_command',
+      level: 'info',
+      status: 'success',
+      deviceId,
+      actor,
+      command: normalizedCommand,
+      source: 'main',
+      details: `Salida confirmada (${Date.now() - startedAt}ms)`,
+    })
+
+    return output
+  } catch (err: any) {
+    await audit.appendAuditEntry({
+      category: 'adb',
+      action: 'execute_adb_command',
+      level: 'error',
+      status: 'error',
+      deviceId,
+      actor,
+      command,
+      source: 'main',
+      details: err?.message || String(err),
+    })
+    throw err
   }
-  const result = await shell(deviceId, command)
-  if (Array.isArray(result)) return result.join('\n')
-  return result
 }
 
 export async function init() {
@@ -726,6 +880,7 @@ export async function init() {
   base.init(client)
   history.init()
   logCases.init()
+  audit.init()
   backup.init()
   logcat.init(client)
   shellAdb.init(client)
@@ -802,7 +957,7 @@ const scanJunk: IpcScanJunk = async function (deviceId) {
     ])
     for (const line of (cacheScriptOut || '').split('\n').filter(Boolean)) {
       const [path, kbStr] = line.split('|')
-      const kb = parseInt(kbStr) || 0
+      const kb = Number.parseInt(kbStr) || 0
       if (path && kb > 0) {
         const isThumb = path.includes('.thumbnails')
         items.push({
@@ -813,7 +968,9 @@ const scanJunk: IpcScanJunk = async function (deviceId) {
         })
       }
     }
-  } catch {}
+  } catch (error) {
+    logger.debug('scan cache failed', error)
+  }
 
   // 2. Temp files in /sdcard/ (.tmp, .temp, .log)
   try {
@@ -825,12 +982,14 @@ const scanJunk: IpcScanJunk = async function (deviceId) {
     ])
     for (const line of (tmpOut || '').split('\n').filter(Boolean)) {
       const [path, szStr] = line.split('|')
-      const size = parseInt(szStr) || 0
+      const size = Number.parseInt(szStr) || 0
       if (path && size > 0) {
         items.push({ category: 'temp', path, label: `Temp: ${path.split('/').pop()}`, size })
       }
     }
-  } catch {}
+  } catch (error) {
+    logger.debug('scan temp files failed', error)
+  }
 
   // 3. APKs in Downloads
   try {
@@ -842,12 +1001,14 @@ const scanJunk: IpcScanJunk = async function (deviceId) {
     ])
     for (const line of (apkOut || '').split('\n').filter(Boolean)) {
       const [path, szStr] = line.split('|')
-      const size = parseInt(szStr) || 0
+      const size = Number.parseInt(szStr) || 0
       if (path && size > 0) {
         items.push({ category: 'apk', path, label: `APK: ${path.split('/').pop()}`, size })
       }
     }
-  } catch {}
+  } catch (error) {
+    logger.debug('scan APKs failed', error)
+  }
 
   // 4. Orphan /sdcard/Android/data folders (app uninstalled)
   try {
@@ -864,7 +1025,7 @@ const scanJunk: IpcScanJunk = async function (deviceId) {
     const candidateFolders = (dataFolders || '')
       .split('\n')
       .map((f: string) => f.trim())
-      .filter((f: string) => f && !installedPkgs.has(f))
+      .filter((f: string) => /^[a-zA-Z0-9._-]+$/.test(f) && !installedPkgs.has(f))
       .slice(0, 20)
 
     if (candidateFolders.length > 0) {
@@ -875,7 +1036,7 @@ const scanJunk: IpcScanJunk = async function (deviceId) {
       for (const line of (duOut || '').split('\n').filter(Boolean)) {
         const parts = line.trim().split(/\s+/)
         if (parts.length >= 2) {
-          const kb = parseInt(parts[0]) || 0
+          const kb = Number.parseInt(parts[0]) || 0
           const folderPath = parts.slice(1).join(' ')
           if (kb > 0 && folderPath) {
             items.push({
@@ -888,9 +1049,46 @@ const scanJunk: IpcScanJunk = async function (deviceId) {
         }
       }
     }
-  } catch {}
+  } catch (error) {
+    logger.debug('scan orphan folders failed', error)
+  }
 
-  // 5. System app cache trim option (pm trim-caches)
+  // 5. Tombstones / ANR / Dropbox crash logs
+  try {
+    const reportPaths = [
+      '/data/anr',
+      '/data/tombstones',
+      '/data/system/dropbox',
+    ]
+
+    const [reportPathsOut] = await shell(deviceId, [
+      `for p in ${reportPaths.map((p) => `"${p}"`).join(' ')}; do
+        if [ -e "$p" ]; then
+          sz=$(du -sk "$p" 2>/dev/null | cut -f1 || echo 0)
+          if [ -n "$sz" ] && [ "$sz" -gt 0 ] 2>/dev/null; then
+            echo "$p|$sz"
+          fi
+        fi
+      done`,
+    ])
+
+    for (const line of (reportPathsOut || '').split('\n').filter(Boolean)) {
+      const [path, kbStr] = line.split('|')
+      const kb = Number.parseInt(kbStr) || 0
+      if (path && kb > 0) {
+        items.push({
+          category: 'report',
+          path,
+          label: `Reportes: ${path.replace(/^\/data\//, '')}`,
+          size: kb * 1024,
+        })
+      }
+    }
+  } catch (error) {
+    logger.debug('scan crash reports failed', error)
+  }
+
+  // 6. System app cache trim option (pm trim-caches)
   try {
     items.unshift({
       category: 'cache',
@@ -898,7 +1096,9 @@ const scanJunk: IpcScanJunk = async function (deviceId) {
       label: 'Caché general del sistema y aplicaciones',
       size: 150 * 1024 * 1024,
     })
-  } catch {}
+  } catch (error) {
+    logger.debug('add cache cleanup option failed', error)
+  }
 
   return items
 }
@@ -911,16 +1111,20 @@ const cleanJunk: IpcCleanJunk = async function (deviceId, items) {
       if (item.path === 'pm_trim_caches') {
         needTrimCaches = true
         freed += item.size
-      } else if (item.path.startsWith('/sdcard/') || item.path.startsWith('/storage/')) {
+      } else if (/^\/(?:sdcard|storage|data)(?:\/[a-zA-Z0-9._+%@-]+)+$/.test(item.path)) {
         await shell(deviceId, [`rm -rf "${item.path}"`])
         freed += item.size
       }
-    } catch {}
+    } catch (error) {
+      logger.debug('clean junk item failed', error)
+    }
   }
   if (needTrimCaches) {
     try {
       await shell(deviceId, ['pm trim-caches 999999999999'])
-    } catch {}
+    } catch (error) {
+      logger.debug('trim caches failed', error)
+    }
   }
   return freed
 }

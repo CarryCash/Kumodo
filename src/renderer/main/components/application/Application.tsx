@@ -46,12 +46,48 @@ const DANGER_LABELS: Record<string, string> = {
   none: '✅ Ninguno',
 }
 
+type RiskFilter = 'all' | 'high' | 'medium' | 'battery'
+
+function filterPackageInfos(packageInfos: IPackageInfo[], riskFilter: RiskFilter) {
+  if (riskFilter === 'all') {
+    return packageInfos
+  }
+
+  if (riskFilter === 'battery') {
+    return packageInfos.filter((info) => info.batteryUser)
+  }
+
+  return packageInfos.filter((info) => info.dangerLevel === riskFilter)
+}
+
+function enrichPackageInfosWithAnalysis(
+  packageInfos: IPackageInfo[],
+  analysisList: any[]
+) {
+  const analysisMap = new Map()
+  for (const app of analysisList) {
+    analysisMap.set(app.packageName, app)
+  }
+
+  for (const info of packageInfos) {
+    const app = analysisMap.get(info.packageName)
+    if (!app) continue
+
+    info.dangerLevel = app.dangerLevel
+    info.suspiciousReasons = app.suspiciousReasons
+    info.permissions = app.permissions
+    info.batteryUser = app.batteryUser
+  }
+
+  return packageInfos
+}
+
 export default observer(function Application() {
   const [isLoading, setIsLoading] = useState(false)
   const [packageInfo, setPackageInfo] = useState<IPackageInfo | null>(null)
   const [packageInfos, setPackageInfos] = useState<IPackageInfo[]>([])
   const [filter, setFilter] = useState('')
-  const [riskFilter, setRiskFilter] = useState<'all' | 'high' | 'medium' | 'battery'>('all')
+  const [riskFilter, setRiskFilter] = useState<RiskFilter>('all')
   const [dropHighlight, setDropHighlight] = useState(false)
   const dataGridRef = useRef<DataGrid>(null)
   const [packageInfoModalVisible, setPackageInfoModalVisible] = useState(false)
@@ -77,95 +113,96 @@ export default observer(function Application() {
     if (!device || isLoading) {
       return
     }
+
     if (!packageName) {
-      setPackageInfos([])
-      setIsLoading(true)
-      const packages = await main.getPackages(
-        device.id,
-        store.application.sysPackage
-      )
+      await refreshAllPackages()
+      return
+    }
+
+    await refreshSinglePackage(packageName)
+  }
+
+  async function refreshAllPackages() {
+    setPackageInfos([])
+    setIsLoading(true)
+
+    try {
+      const packages = await main.getPackages(device!.id, store.application.sysPackage)
       const chunks = chunk(packages, 50)
-      let packageInfos: any[] = []
-      for (let i = 0, len = chunks.length; i < len; i++) {
-        const chunk = chunks[i]
-        packageInfos = concat(
-          packageInfos,
-          await main.getPackageInfos(device.id, chunk)
+      let loadedPackages: any[] = []
+
+      for (const chunkPackages of chunks) {
+        loadedPackages = concat(
+          loadedPackages,
+          await main.getPackageInfos(device!.id, chunkPackages)
         )
-        iconsRef.current = map(packageInfos, (info) => {
-          const style: any = {
-            borderRadius: '20%',
-          }
+
+        iconsRef.current = map(loadedPackages, (info) => {
+          const style: any = { borderRadius: '20%' }
           if (!info.enabled) {
             style.filter = 'grayscale(100%)'
           }
 
           return {
-            info: info,
+            info,
             src: info.icon || defaultIcon,
             name: info.label,
             style,
           }
         })
-        setPackageInfos(packageInfos)
-      }
-      
-      try {
-        const analysisList = await main.getAppAnalysis(device.id)
-        const analysisMap = new Map()
-        for (const app of analysisList) {
-          analysisMap.set(app.packageName, app)
-        }
-        for (const info of packageInfos) {
-          const app = analysisMap.get(info.packageName)
-          if (app) {
-            info.dangerLevel = app.dangerLevel
-            info.suspiciousReasons = app.suspiciousReasons
-            info.permissions = app.permissions
-            info.batteryUser = app.batteryUser
-          }
-        }
-        setPackageInfos([...packageInfos])
-      } catch (e) {}
 
-      setIsLoading(false)
-    } else {
-      const idx = findIdx(
-        packageInfos,
-        (info) => info.packageName === packageName
-      )
-      if (idx !== -1) {
-        const infos = await main.getPackageInfos(device.id, [packageName])
-        const info = infos[0]
-        packageInfos[idx] = info
-        const style: any = {
-          borderRadius: '20%',
-        }
-        if (!info.enabled) {
-          style.filter = 'grayscale(100%)'
-        }
-        iconsRef.current[idx] = {
-          info: info,
-          src: info.icon || defaultIcon,
-          name: info.label,
-          style,
-        }
-        iconsRef.current = clone(iconsRef.current)
-        
-        try {
-          const analysisList = await main.getAppAnalysis(device.id)
-          const app = find(analysisList, a => a.packageName === packageName)
-          if (app) {
-            info.dangerLevel = app.dangerLevel
-            info.suspiciousReasons = app.suspiciousReasons
-            info.permissions = app.permissions
-            info.batteryUser = app.batteryUser
-          }
-        } catch (e) {}
-        
-        setPackageInfos(clone(packageInfos))
+        setPackageInfos(loadedPackages)
       }
+
+      try {
+        const analysisList = await main.getAppAnalysis(device!.id)
+        const enriched = enrichPackageInfosWithAnalysis(loadedPackages, analysisList)
+        setPackageInfos([...enriched])
+      } catch {
+        // Some devices or OEM builds may not support the full app analysis payload.
+      }
+    } finally {
+      setIsLoading(false)
     }
+  }
+
+  async function refreshSinglePackage(packageName: string) {
+    const idx = findIdx(packageInfos, (info) => info.packageName === packageName)
+    if (idx === -1) {
+      return
+    }
+
+    const infos = await main.getPackageInfos(device!.id, [packageName])
+    const info = infos[0]
+    packageInfos[idx] = info
+
+    const style: any = { borderRadius: '20%' }
+    if (!info.enabled) {
+      style.filter = 'grayscale(100%)'
+    }
+
+    iconsRef.current[idx] = {
+      info,
+      src: info.icon || defaultIcon,
+      name: info.label,
+      style,
+    }
+    iconsRef.current = clone(iconsRef.current)
+
+    try {
+      const analysisList = await main.getAppAnalysis(device!.id)
+      const app = find(analysisList, (item) => item.packageName === packageName)
+      if (app) {
+        info.dangerLevel = app.dangerLevel
+        info.suspiciousReasons = app.suspiciousReasons
+        info.permissions = app.permissions
+        info.batteryUser = app.batteryUser
+      }
+    } catch {
+      // Some OEM devices do not expose the full app-analysis structure consistently.
+    }
+
+    setPackageInfos(clone(packageInfos))
   }
 
   async function onDrop(e: React.DragEvent) {
@@ -318,6 +355,25 @@ export default observer(function Application() {
     contextMenu(e, template)
   }
 
+  const visiblePackageInfos = filterPackageInfos(packageInfos, riskFilter)
+
+  const visibleIcons =
+    visiblePackageInfos.map((info) => {
+      const style: any = {
+        borderRadius: '20%',
+      }
+      if (!info.enabled) {
+        style.filter = 'grayscale(100%)'
+      }
+
+      return {
+        info,
+        src: info.icon || defaultIcon,
+        name: info.label,
+        style,
+      }
+    })
+
   const applications = (
     <div
       className={Style.applications}
@@ -361,11 +417,7 @@ export default observer(function Application() {
           filter={filter}
           columns={columns}
           data={map(
-            riskFilter === 'all'
-              ? packageInfos
-              : riskFilter === 'battery'
-                ? packageInfos.filter(i => i.batteryUser)
-                : packageInfos.filter(i => i.dangerLevel === riskFilter),
+            visiblePackageInfos,
             (info: IPackageInfo) => {
               return {
                 info,
@@ -407,7 +459,7 @@ export default observer(function Application() {
         />
       ) : (
         <LunaIconList
-          icons={iconsRef.current}
+          icons={visibleIcons}
           size={store.application.itemSize}
           filter={filter}
           onClick={(e: any, icon) => {
@@ -468,9 +520,11 @@ export default observer(function Application() {
             const labels = { all: 'Todos', high: '🔴 Alto', medium: '🟡 Medio', battery: '🔋 Batería' }
             const active = riskFilter === val
             return (
-              <span
+              <button
+                type="button"
                 key={val}
                 onClick={() => setRiskFilter(val)}
+                aria-pressed={active}
                 style={{
                   cursor: 'pointer',
                   padding: '1px 8px',
@@ -486,7 +540,7 @@ export default observer(function Application() {
                 }}
               >
                 {labels[val]}
-              </span>
+              </button>
             )
           })}
         </span>

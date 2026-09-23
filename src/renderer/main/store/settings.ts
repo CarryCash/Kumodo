@@ -39,9 +39,10 @@ export class Settings {
     }
   }
   async set(name: string, val: any) {
+    const normalized = name === 'geminiApiKey' && typeof val === 'string' ? val.trim() : val
     runInAction(() => {
-      this[name] = val
+      this[name] = normalized
     })
-    await main.setSettingsStore(name, val)
+    await main.setSettingsStore(name, normalized)
   }
 }

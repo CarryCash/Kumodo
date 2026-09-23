@@ -22,11 +22,13 @@
     "scrcpy": "zx script/scrcpy.mjs",
     "server": "zx script/server.mjs",
     "format": "lsla prettier \"src/**/*.{ts,tsx,scss,css,json}\" \"*.{js,ts,json}\" \"script/*.mjs\" --write",
-    "start": "electron ./dist/main/index.js --inspect=9229",
+    "start": "electron ./dist/main/index.js",
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
     "gen:icon": "lsla genIcon --input src/renderer/ --output src/renderer/icon.css --name aya-icon --source src/renderer/icon/",
     "gen:theme": "lsla genTheme --input src/common/theme.json --output src/renderer/theme.scss && lsla genTheme --input src/common/theme.json --output src/common/theme.ts",
-    "gen:pb": "pbjs -t static-module -w es6 -o src/main/lib/wire.js server/server/src/main/proto/Wire.proto && pbts -o src/main/lib/wire.d.ts src/main/lib/wire.js"
+    "gen:pb": "pbjs -t static-module -w es6 -o src/main/lib/wire.js server/server/src/main/proto/Wire.proto && pbts -o src/main/lib/wire.d.ts src/main/lib/wire.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [
     "adb"
@@ -39,6 +41,7 @@
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.3.2",
+    "@vitest/coverage-v8": "^1.6.0",
     "@xmldom/xmldom": "^0.9.8",
     "@xterm/addon-canvas": "^0.7.0",
     "@xterm/addon-fit": "^0.10.0",
@@ -61,6 +64,7 @@
     "eslint-config-prettier": "^9.1.0",
     "fs-extra": "^11.2.0",
     "globals": "^15.11.0",
+    "jsdom": "^29.1.1",
     "licia": "^1.48.0",
     "luna-command-palette": "^0.3.1",
     "luna-data-grid": "^2.0.2",
@@ -93,6 +97,7 @@
     "sass": "^1.80.2",
     "typescript-eslint": "^8.11.0",
     "vite": "^5.4.9",
+    "vitest": "^1.6.0",
     "webm-muxer": "^5.1.2",
     "xml2js": "^0.6.2",
     "zx": "^8.8.0"

@@ -24,7 +24,7 @@ let client: Client
 
 const getCurrentUser = singleton(async (deviceId: string) => {
   const result = await shell(deviceId, 'am get-current-user')
-  return parseInt(result, 10)
+  return Number.parseInt(result, 10)
 })
 
 export const getPackages = singleton(<IpcGetPackages>(async (
@@ -46,42 +46,69 @@ const stopPackage: IpcStopPackage = async function (deviceId, pkg) {
 }
 
 const clearPackage: IpcClearPackage = async function (deviceId, pkg) {
-  const device = await client.getDevice(deviceId)
+  const device = client.getDevice(deviceId)
   await device.clear(pkg)
 }
 
 const startPackage: IpcStartPackage = async function (deviceId, pkg) {
   const component = await getMainComponent(deviceId, pkg)
-  const device = await client.getDevice(deviceId)
+  const device = client.getDevice(deviceId)
   await device.startActivity({
     component,
   })
 }
 
 const installPackage: IpcInstallPackage = async function (deviceId, apkPath) {
-  const device = await client.getDevice(deviceId)
+  const device = client.getDevice(deviceId)
   await device.install(apkPath)
 }
 
 const uninstallPackage: IpcUninstallPackage = async function (deviceId, pkg) {
-  const device = await client.getDevice(deviceId)
+  const device = client.getDevice(deviceId)
   await device.uninstall(pkg)
 }
 
 async function getMainComponent(deviceId: string, pkg: string) {
   const result = await shell(
     deviceId,
-    `dumpsys package ${pkg} | grep -A 1 MAIN`
+    `dumpsys package ${pkg} 2>/dev/null | grep -A 2 MAIN || true`
   )
-  const lines = result.split('\n')
+
+  const lines = (result || '').split('\n')
   for (let i = 0, len = lines.length; i < len; i++) {
     const line = trim(lines[i])
-    if (contain(line, `${pkg}/`)) {
-      return line.substring(line.indexOf(`${pkg}/`), line.indexOf(' filter'))
+    if (!contain(line, `${pkg}/`)) {
+      continue
+    }
+
+    const start = line.indexOf(`${pkg}/`)
+    const end = line.indexOf(' filter')
+    if (start >= 0 && end > start) {
+      return line.substring(start, end)
+    }
+
+    if (start >= 0) {
+      return line.substring(start)
     }
   }
 
-  throw new Error('Failed to get main activity')
+  const launcherResult = await shell(
+    deviceId,
+    `pm dump ${pkg} 2>/dev/null | grep -A 5 -E 'LAUNCHER|MAIN' || true`
+  )
+  const launcherLine = (launcherResult || '')
+    .split('\n')
+    .map((line) => trim(line))
+    .find((line) => line.includes(pkg) && line.includes('/'))
+
+  if (launcherLine) {
+    const start = launcherLine.indexOf(`${pkg}/`)
+    if (start >= 0) {
+      return launcherLine.substring(start)
+    }
+  }
+
+  throw new Error(`La app ${pkg} no tiene actividad principal lanzable`)
 }
 
 export const getTopPackage = singleton(<IpcGetTopPackage>(
@@ -104,9 +131,9 @@ export const getTopPackage = singleton(<IpcGetTopPackage>(
     }
 
     let parts = line.split(/\s+/)
-    parts = parts[parts.length - 2].split(':')
-    const pid = parseInt(parts[0], 10)
-    let name = parts[1]
+    parts = parts.at(-2)?.split(':') || []
+    const pid = Number.parseInt(parts[0] || '0', 10)
+    let name = parts[1] || ''
     if (contain(name, '/')) {
       name = name.split('/')[0]
     }
@@ -127,7 +154,7 @@ const enablePackage: IpcEnablePackage = async function (deviceId, pkg) {
 }
 
 // Dangerous permissions list that indicate risky apps
-const DANGEROUS_PERMISSIONS = [
+const DANGEROUS_PERMISSIONS = new Set([
   'READ_CONTACTS', 'WRITE_CONTACTS',
   'READ_CALL_LOG', 'WRITE_CALL_LOG',
   'READ_SMS', 'SEND_SMS', 'RECEIVE_SMS',
@@ -142,7 +169,7 @@ const DANGEROUS_PERMISSIONS = [
   'SYSTEM_ALERT_WINDOW',
   'BIND_DEVICE_ADMIN',
   'READ_LOGS',
-]
+])
 
 // Known suspicious/adware package prefixes
 const SUSPICIOUS_PREFIXES = [
@@ -150,81 +177,104 @@ const SUSPICIOUS_PREFIXES = [
   'com.startapp', 'com.mobvista', 'com.inmobi', 'com.mopub',
 ]
 
-const getAppAnalysis: IpcGetAppAnalysis = async function (deviceId) {
-  // Get all packages (system + user)
-  const allResult: string = await shell(
-    deviceId,
-    `pm list packages -e --user ${await getCurrentUser(deviceId)}`
-  )
-  const disabledResult: string = await shell(
-    deviceId,
-    `pm list packages -d --user ${await getCurrentUser(deviceId)}`
-  )
-  const systemResult: string = await shell(
-    deviceId,
-    `pm list packages -s --user ${await getCurrentUser(deviceId)}`
-  )
-  const userResult: string = await shell(
-    deviceId,
-    `pm list packages -3 --user ${await getCurrentUser(deviceId)}`
-  )
+function parsePackageList(raw: string): Set<string> {
+  return new Set(trim(raw).split('\n').filter(Boolean).map((line) => line.slice(8)))
+}
 
-  const enabledPkgs = new Set(trim(allResult).split('\n').filter(Boolean).map(l => l.slice(8)))
-  const disabledPkgs = new Set(trim(disabledResult).split('\n').filter(Boolean).map(l => l.slice(8)))
-  const systemPkgs = new Set(trim(systemResult).split('\n').filter(Boolean).map(l => l.slice(8)))
-  const userPkgs = new Set(trim(userResult).split('\n').filter(Boolean).map(l => l.slice(8)))
-
-  const allPkgs = new Set([...enabledPkgs, ...disabledPkgs])
-
-  // Get battery-consuming apps from batterystats
-  const batteryData = await shell(deviceId, 'dumpsys batterystats')
+function collectBatteryConsumers(raw: string): Set<string> {
   const batteryPkgs = new Set<string>()
-  const batteryLines = batteryData.split('\n')
+  const lines = raw.split('\n')
   let inPowerUse = false
-  for (const line of batteryLines) {
-    const t = line.trim()
-    if (t.includes('Estimated power use')) { inPowerUse = true; continue }
-    if (inPowerUse) {
-      if (t === '' || t.startsWith('All partial wake locks')) break
-      const m = t.match(/Uid \w+: [\d.]+ .+ (\S+\.\S+)\s*$/)
-      if (m) batteryPkgs.add(m[1])
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (trimmed.includes('Estimated power use')) {
+      inPowerUse = true
+      continue
+    }
+
+    if (!inPowerUse) continue
+    if (!trimmed || trimmed.startsWith('All partial wake locks')) break
+
+    if (!trimmed.startsWith('Uid ')) continue
+
+    const colonIndex = trimmed.indexOf(':')
+    if (colonIndex < 0) continue
+
+    const afterColon = trimmed.slice(colonIndex + 1).trim()
+    const lastSpace = afterColon.lastIndexOf(' ')
+    const candidate = lastSpace >= 0 ? afterColon.slice(lastSpace + 1).trim() : afterColon
+
+    if (candidate.includes('.')) {
+      batteryPkgs.add(candidate)
     }
   }
 
-  const apps: IAppInfo[] = []
+  return batteryPkgs
+}
 
-  // Limit to first 80 packages to avoid very long loading
+function collectDangerousPermissions(permResult: string): string[] {
+  const dangerousPermissions: string[] = []
+  const permLines = permResult.split('\n')
+
+  for (const line of permLines) {
+    const match = /android\.permission\.(\w+)/.exec(line)
+    if (!match) continue
+
+    const permissionName = match[1]
+    if (DANGEROUS_PERMISSIONS.has(permissionName)) {
+      dangerousPermissions.push(permissionName)
+    }
+  }
+
+  return dangerousPermissions
+}
+
+function evaluateDangerLevel(isSystem: boolean, dangerousPermissions: string[], suspiciousReasons: string[]): IAppInfo['dangerLevel'] {
+  if (suspiciousReasons.length > 0) return 'high'
+  if (dangerousPermissions.length >= 3) return 'medium'
+  if (dangerousPermissions.length >= 1 && !isSystem) return 'low'
+  return 'none'
+}
+
+const getAppAnalysis: IpcGetAppAnalysis = async function (deviceId) {
+  const userId = await getCurrentUser(deviceId)
+
+  const [allResult, disabledResult, systemResult] = await Promise.all([
+    shell(deviceId, `pm list packages -e --user ${userId}`),
+    shell(deviceId, `pm list packages -d --user ${userId}`),
+    shell(deviceId, `pm list packages -s --user ${userId}`),
+  ])
+
+  const enabledPkgs = parsePackageList(allResult)
+  const disabledPkgs = parsePackageList(disabledResult)
+  const systemPkgs = parsePackageList(systemResult)
+  const allPkgs = new Set([...enabledPkgs, ...disabledPkgs])
+
+  const batteryData = await shell(deviceId, 'dumpsys batterystats')
+  const batteryPkgs = collectBatteryConsumers(batteryData)
+
+  const apps: IAppInfo[] = []
   const pkgsToAnalyze = [...allPkgs].slice(0, 80)
 
   for (const pkg of pkgsToAnalyze) {
     if (!pkg || pkg.length === 0) continue
 
     const isSystem = systemPkgs.has(pkg)
-    const isUser = userPkgs.has(pkg)
     const enabled = enabledPkgs.has(pkg)
-
-    // Get permissions
-    let permissions: string[] = []
-    let dangerousPermissions: string[] = []
-    try {
-      const permResult = await shell(deviceId, `dumpsys package ${pkg} | grep 'uses-permission' | head -40`)
-      const permLines = permResult.split('\n')
-      for (const line of permLines) {
-        const m = line.match(/android\.permission\.(\w+)/)
-        if (m) {
-          permissions.push(m[1])
-          if (DANGEROUS_PERMISSIONS.includes(m[1])) {
-            dangerousPermissions.push(m[1])
-          }
-        }
-      }
-    } catch (_) {}
-
-    const batteryUser = batteryPkgs.has(pkg)
-
-    // Determine suspicious reasons
     const suspiciousReasons: string[] = []
-    if (SUSPICIOUS_PREFIXES.some(prefix => pkg.startsWith(prefix))) {
+
+    const dangerousPermissions = await (async () => {
+      try {
+        const permResult = await shell(deviceId, `dumpsys package ${pkg} 2>/dev/null | grep 'uses-permission' | head -40`)
+        return collectDangerousPermissions(permResult)
+      } catch {
+        // OEM builds may not expose the permission list in a standard format.
+        return [] as string[]
+      }
+    })()
+
+    if (SUSPICIOUS_PREFIXES.some((prefix) => pkg.startsWith(prefix))) {
       suspiciousReasons.push('Posible adware o spyware conocido')
     }
     if (dangerousPermissions.length >= 5) {
@@ -237,17 +287,14 @@ const getAppAnalysis: IpcGetAppAnalysis = async function (deviceId) {
       suspiciousReasons.push('Puede grabar audio y superponer ventanas (sospechoso)')
     }
 
-    // Determine danger level
-    let dangerLevel: IAppInfo['dangerLevel'] = 'none'
-    if (suspiciousReasons.length > 0) dangerLevel = 'high'
-    else if (dangerousPermissions.length >= 3) dangerLevel = 'medium'
-    else if (dangerousPermissions.length >= 1) dangerLevel = 'low'
+    const batteryUser = batteryPkgs.has(pkg)
+    const dangerLevel = evaluateDangerLevel(isSystem, dangerousPermissions, suspiciousReasons)
 
     apps.push({
       packageName: pkg,
       isSystem,
       dangerLevel,
-      permissions,
+      permissions: [],
       dangerousPermissions,
       batteryUser,
       suspiciousReasons,
@@ -262,11 +309,8 @@ const getAppAnalysis: IpcGetAppAnalysis = async function (deviceId) {
 }
 
 const toggleApp: IpcToggleApp = async function (deviceId, pkg, enable) {
-  if (enable) {
-    await shell(deviceId, `pm enable ${pkg}`)
-  } else {
-    await shell(deviceId, `pm disable-user ${pkg}`)
-  }
+  const action = enable ? enablePackage : disablePackage
+  return action(deviceId, pkg)
 }
 
 export async function init(c: Client) {

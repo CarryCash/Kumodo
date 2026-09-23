@@ -26,7 +26,6 @@ export default observer(function DebloaterModal(props: IProps) {
   const [search, setSearch] = useState('')
   const [processing, setProcessing] = useState(false)
   const [isAiAnalyzing, setIsAiAnalyzing] = useState(false)
-  const [aiAnalyzedSet, setAiAnalyzedSet] = useState<Set<string>>(new Set())
   const [deviceBrand, setDeviceBrand] = useState('')
   const [deviceModel, setDeviceModel] = useState('')
 
@@ -134,7 +133,6 @@ export default observer(function DebloaterModal(props: IProps) {
             return pkg
           })
         )
-        setAiAnalyzedSet(new Set(Object.keys(aiMap)))
         notify(`¡Gemini clasificó con éxito ${analyzedCount} aplicaciones con información en vivo!`, { icon: 'success' })
       } else {
         notify('Gemini no encontró bloatware crítico adicional en los paquetes analizados', { icon: 'info' })
@@ -158,12 +156,12 @@ export default observer(function DebloaterModal(props: IProps) {
   async function handleBatchAction(action: 'disable' | 'uninstall' | 'enable') {
     if (!device || selectedPkgs.size === 0 || processing) return
 
-    const actionText =
-      action === 'disable'
-        ? 'desactivar'
-        : action === 'uninstall'
-        ? 'desinstalar para el usuario'
-        : 'reactivar'
+    let actionText = 'reactivar'
+    if (action === 'disable') {
+      actionText = 'desactivar'
+    } else if (action === 'uninstall') {
+      actionText = 'desinstalar para el usuario'
+    }
 
     const confirm = window.confirm(
       `¿Deseas ${actionText} los ${selectedPkgs.size} paquetes seleccionados?`
@@ -360,11 +358,9 @@ export default observer(function DebloaterModal(props: IProps) {
                             [Style.danger]: pkg.category === 'danger',
                           })}
                         >
-                          {pkg.category === 'safe'
-                            ? '🟢 Seguro'
-                            : pkg.category === 'risky'
-                            ? '🟡 Riesgoso'
-                            : '🔴 Crítico'}
+                          {pkg.category === 'safe' && '🟢 Seguro'}
+                          {pkg.category === 'risky' && '🟡 Riesgoso'}
+                          {pkg.category !== 'safe' && pkg.category !== 'risky' && '🔴 Crítico'}
                         </span>
                       </td>
 

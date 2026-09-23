@@ -18,6 +18,7 @@ const categoryLabels: Record<string, string> = {
   temp: '🗑️ Archivos temporales',
   apk: '📱 APKs en Descargas',
   orphan: '👻 Carpetas huérfanas',
+  report: '🧾 Reportes de error y tombstones',
 }
 
 const categoryColors: Record<string, string> = {
@@ -25,6 +26,7 @@ const categoryColors: Record<string, string> = {
   temp: '#fa8c16',
   apk: '#52c41a',
   orphan: '#f5222d',
+  report: '#fa541c',
 }
 
 export default function CleanerModal({ onClose }: IProps) {

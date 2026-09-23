@@ -314,6 +314,10 @@ export interface IBackupProgress {
   error?: string
   outputPath?: string
   checksum?: string
+  manifestPath?: string
+  manifestHash?: string
+  chainOfCustodyPath?: string
+  evidenceBy?: string
 }
 
 export type IpcRunBackup = (job: IBackupJob) => Promise<IBackupProgress>
@@ -321,7 +325,7 @@ export type IpcPickFolder = () => Promise<string | null>
 export type IpcExecAdb = (deviceId: string, command: string) => Promise<string>
 
 export interface IJunkItem {
-  category: 'cache' | 'temp' | 'apk' | 'orphan'
+  category: 'cache' | 'temp' | 'apk' | 'orphan' | 'report'
   path: string
   label: string
   size: number // bytes
@@ -442,6 +446,25 @@ export type IpcEnableWirelessBridge = (
 export type IpcGetWirelessProfiles = () => Promise<IWirelessProfile[]>
 export type IpcRemoveWirelessProfile = (ip: string) => Promise<void>
 export type IpcPingIp = (ip: string, port?: number) => Promise<boolean>
+
+export interface IAuditLogEntry {
+  timestamp: string
+  category: 'system' | 'adb' | 'ai' | 'backup' | 'security' | 'user'
+  action: string
+  level: 'info' | 'warn' | 'error' | 'debug'
+  status: 'success' | 'error' | 'cancelled' | 'pending' | 'blocked'
+  deviceId?: string
+  actor?: string
+  authorizedBy?: string
+  command?: string
+  prompt?: string
+  details?: string
+  sessionId?: string
+  source?: 'app' | 'renderer' | 'main' | 'ai'
+}
+
+export type IpcWriteAuditLog = (entry: Partial<IAuditLogEntry>) => Promise<void>
+export type IpcGetAuditLog = (limit?: number) => Promise<IAuditLogEntry[]>
 
 // ─── Forensic Mode Types ───────────────────────────────────────────────────────
 
