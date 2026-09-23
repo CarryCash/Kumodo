@@ -1,13 +1,33 @@
-# Arquitectura del Sistema
+# Arquitectura del Sistema y Entorno de Desarrollo
 
 El "Copiloto de Reparaciones Celulares" es una aplicación robusta construida con tecnologías web modernas, diseñada para ejecutarse como una aplicación nativa de escritorio.
 
-## Stack Tecnológico
-- **Core de Escritorio:** Electron (Manejo de ventanas, acceso nativo al SO).
-- **Procesamiento Frontend:** React (UI interactiva) y Vite (Empaquetador ultrarrápido).
-- **Lenguaje Principal:** TypeScript (Proporciona tipado estático, reduciendo bugs y mejorando la mantenibilidad).
-- **Estilos:** SCSS (Módulos de estilos para encapsulación).
-- **Gestión de Estado:** MobX (Estado global reactivo para la UI).
+## Entorno de Desarrollo Local
+Para contribuir o depurar el proyecto, necesitas configurar tu entorno local. No recomendamos modificar archivos directamente en producción.
+
+### Prerrequisitos
+- **Node.js** (v18.x o superior)
+- **Git**
+- **Android SDK Platform-Tools** (ADB debe estar disponible en el PATH, aunque el proyecto intentará descargar uno de respaldo si es necesario).
+
+### Instalación y Ejecución
+1. **Clonar e Instalar:**
+   ```bash
+   git clone https://github.com/CarryCash/Kumodo.git
+   cd Kumodo
+   npm install
+   ```
+2. **Descargar Binarios Base:**
+   La aplicación depende de binarios como `adb` y `scrcpy`. Debes descargarlos en tu entorno local antes de compilar:
+   ```bash
+   npm run adb
+   npm run scrcpy
+   ```
+3. **Levantar el entorno en Desarrollo (Hot-Reload):**
+   ```bash
+   npm run dev
+   ```
+   Esto iniciará Vite para el Renderer y compilará el proceso Main en paralelo, abriendo la ventana de Electron.
 
 ## Estructura de Procesos de Electron
 1. **Main Process (`src/main/`):**
