@@ -20,11 +20,13 @@ import toStr from 'licia/toStr'
 import { t } from 'common/util'
 import ToolbarIcon from 'share/renderer/components/ToolbarIcon'
 import contextMenu from 'share/renderer/lib/contextMenu'
+import LogAnalyzer from './LogAnalyzer'
 
 export default observer(function Logcat() {
   const [view, setView] = useState<'compact' | 'standard'>('standard')
   const [softWrap, setSoftWrap] = useState(false)
   const [paused, setPaused] = useState(false)
+  const [analyzerMode, setAnalyzerMode] = useState(false)
   const [filter, setFilter] = useState<{
     priority?: number
     package?: string
@@ -241,16 +243,32 @@ export default observer(function Logcat() {
           onClick={clear}
           disabled={!device}
         />
+        <LunaToolbarSeparator />
+        <ToolbarIcon
+          icon="bug"
+          state={analyzerMode ? 'hover' : ''}
+          title="Analizador de Logs"
+          onClick={() => setAnalyzerMode(!analyzerMode)}
+          disabled={!device}
+        />
       </LunaToolbar>
-      <LunaLogcat
-        className="panel-body"
-        maxNum={10000}
-        filter={filter}
-        wrapLongLines={softWrap}
-        onContextMenu={onContextMenu}
-        view={view}
-        onCreate={(logcat) => (logcatRef.current = logcat)}
-      />
+      {analyzerMode ? (
+        <LogAnalyzer
+          device={device}
+          entriesRef={entriesRef}
+          onClose={() => setAnalyzerMode(false)}
+        />
+      ) : (
+        <LunaLogcat
+          className="panel-body"
+          maxNum={10000}
+          filter={filter}
+          wrapLongLines={softWrap}
+          onContextMenu={onContextMenu}
+          view={view}
+          onCreate={(logcat) => (logcatRef.current = logcat)}
+        />
+      )}
     </div>
   )
 })

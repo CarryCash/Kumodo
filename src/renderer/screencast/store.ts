@@ -12,6 +12,7 @@ class Store extends BaseStore {
   settings = defaultSettings
   screenOff = false
   recording = false
+  presentationMode = false
   constructor() {
     super()
 
@@ -21,11 +22,14 @@ class Store extends BaseStore {
       device: observable,
       screenOff: observable,
       recording: observable,
+      presentationMode: observable,
       setAlwaysOnTop: action,
       turnOnScreen: action,
       turnOffScreen: action,
       startRecording: action,
       stopRecording: action,
+      setPresentationMode: action,
+      togglePresentationMode: action,
     })
 
     this.init()
@@ -51,6 +55,21 @@ class Store extends BaseStore {
   stopRecording() {
     this.recording = false
     this.scrcpyClient.stopRecording()
+  }
+  setPresentationMode(val: boolean) {
+    this.presentationMode = val
+    if (val) {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {})
+      }
+    } else {
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {})
+      }
+    }
+  }
+  togglePresentationMode() {
+    this.setPresentationMode(!this.presentationMode)
   }
   async setDevice(device: IDevice | null) {
     if (device === null) {

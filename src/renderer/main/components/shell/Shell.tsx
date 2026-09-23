@@ -16,6 +16,10 @@ import find from 'licia/find'
 import idxOf from 'licia/idxOf'
 import truncate from 'licia/truncate'
 import { Terminal } from '@xterm/xterm'
+import { createPortal } from 'react-dom'
+import LunaModal from 'luna-modal/react'
+import ChatAdb from '../chat/ChatAdb'
+import CommandLibraryModal from './CommandLibraryModal'
 
 interface IShell {
   id: string
@@ -27,6 +31,8 @@ interface IShell {
 export default observer(function Shell() {
   const [shells, setShells] = useState<Array<IShell>>([])
   const [commandPaletteVisible, setCommandPaletteVisible] = useState(false)
+  const [chatVisible, setChatVisible] = useState(false)
+  const [libraryVisible, setLibraryVisible] = useState(false)
   const [selectedShell, setSelectedShell] = useState<IShell>({
     id: '',
     name: '',
@@ -126,6 +132,34 @@ export default observer(function Shell() {
             onClick={add}
             disabled={!device}
           />
+          <button
+            onClick={() => setChatVisible(true)}
+            disabled={!device}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: device ? 'pointer' : 'not-allowed',
+              color: device ? 'var(--color-primary, #1677ff)' : 'var(--color-text-disabled, #999)',
+              fontWeight: 600,
+              fontSize: 13,
+              padding: '0 6px',
+              opacity: device ? 1 : 0.5,
+            }}
+          >Chat</button>
+          <button
+            onClick={() => setLibraryVisible(true)}
+            disabled={!device}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: device ? 'pointer' : 'not-allowed',
+              color: device ? 'var(--color-primary, #1677ff)' : 'var(--color-text-disabled, #999)',
+              fontWeight: 600,
+              fontSize: 13,
+              padding: '0 6px',
+              opacity: device ? 1 : 0.5,
+            }}
+          >Comandos</button>
           <LunaToolbarSpace />
           <ToolbarIcon
             icon="list"
@@ -144,6 +178,32 @@ export default observer(function Shell() {
           commands={commands}
         />
       </div>
+      {chatVisible && createPortal(
+        <LunaModal
+          title="Chat ADB"
+          width={800}
+          visible={true}
+          onClose={() => setChatVisible(false)}
+        >
+          <div style={{ height: '70vh', position: 'relative', overflowY: 'auto' }}>
+            <ChatAdb />
+          </div>
+        </LunaModal>,
+        document.body
+      )}
+      <CommandLibraryModal
+        visible={libraryVisible}
+        onClose={() => setLibraryVisible(false)}
+        onExecute={(cmd, autoEnter) => {
+          if (!selectedShell.sessionId) return
+          main.writeShell(selectedShell.sessionId, cmd + (autoEnter ? '\n' : ''))
+          setTimeout(() => {
+            if (selectedShell.terminal) {
+              selectedShell.terminal.focus()
+            }
+          }, 100)
+        }}
+      />
     </div>
   )
 })

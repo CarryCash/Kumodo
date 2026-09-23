@@ -15,17 +15,29 @@ import LunaToolbar, { LunaToolbarSpace } from 'luna-toolbar/react'
 import ToolbarIcon from 'share/renderer/components/ToolbarIcon'
 import PortMappingModal from './PortMappingModal'
 import RemoteControllerModal from './RemoteControllerModal'
+import HistoryModal from './HistoryModal'
 import toBool from 'licia/toBool'
+import durationFormat from 'licia/durationFormat'
+import { IDiagnostic } from 'common/types'
+import { createPortal } from 'react-dom'
+import LunaModal from 'luna-modal/react'
+import Battery from '../battery/Battery'
+import Storage from '../storage/Storage'
+import Backup from '../backup/Backup'
+import SecurityAuditModal from './SecurityAuditModal'
+
 
 export default observer(function Overview() {
   const [portModalVisible, setPortModalVisible] = useState(false)
   const [remoteControllerModalVisible, setRemoteControllerModalVisible] =
     useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const [overview, setOverview] = useState<
-    types.PlainObj<string | number | boolean>
-  >({})
+  const [overview, setOverview] = useState<types.PlainObj<string | number | boolean>>({})
+  const [diagnostic, setDiagnostic] = useState<IDiagnostic | null>(null)
   const [fontAdjustModalVisible, setFontAdjustModalVisible] = useState(false)
+  const [historyModalVisible, setHistoryModalVisible] = useState(false)
+  const [securityModalVisible, setSecurityModalVisible] = useState(false)
+  const [toolModal, setToolModal] = useState<string | null>(null)
 
   const { device } = store
 
@@ -41,7 +53,19 @@ export default observer(function Overview() {
     try {
       setIsLoading(true)
       const overview = await main.getOverview(device.id)
+      const diag = await main.getDiagnostic(device.id)
       setOverview(overview)
+      setDiagnostic(diag)
+      try {
+        await main.saveHistory({
+          serialno: diag.serialno || device.id,
+          name: diag.name || device.name || 'Unknown',
+          androidVersion: diag.androidVersion || '',
+          sdkVersion: diag.sdkVersion || '',
+          connectedAt: Date.now(),
+          notes: ''
+        })
+      } catch {}
     } catch {
       notify(t('commonErr'), { icon: 'error' })
     }
@@ -118,6 +142,25 @@ export default observer(function Overview() {
           {item(t('ipAddress'), overview.ip, 'browser')}
           {item(t('macAddress'), overview.mac, 'browser')}
         </div>
+        {diagnostic && (
+          <>
+            <div className={Style.row}>
+              {item('Batería', `${diagnostic.batteryLevel}%`, 'power')}
+              {item('Voltaje', `${(diagnostic.batteryVoltage / 1000).toFixed(2)}V`, 'power')}
+              {item('Temperatura', `${diagnostic.batteryTemperature / 10}°C`, 'power')}
+            </div>
+            <div className={Style.row}>
+              {item('Uptime', durationFormat(diagnostic.uptime, 'd:hh:mm:ss'), 'time')}
+              {item('Bootloader', diagnostic.bootloader, 'android')}
+              {item('Cifrado', diagnostic.encryption, 'unlock')}
+            </div>
+          </>
+        )}
+        <div className={Style.row}>
+          {item('Batería', 'Abrir módulo', 'power', undefined, () => setToolModal('battery'))}
+          {item('Almacenamiento', 'Abrir módulo', 'storage', undefined, () => setToolModal('storage'))}
+          {item('Respaldo', 'Abrir módulo', 'save', undefined, () => setToolModal('backup'))}
+        </div>
         <FontAdjustModal
           visible={fontAdjustModalVisible}
           initialScale={overview.fontScale as number}
@@ -145,6 +188,60 @@ export default observer(function Overview() {
   async function restartAdbServer() {
     await main.restartAdbServer()
     notify(t('adbServerRestarted'), { icon: 'success' })
+  }
+
+  function exportReport() {
+    if (!diagnostic) return
+    const content = `INFORME DE DIAGNÓSTICO
+======================
+Fecha: ${new Date().toLocaleString()}
+
+IDENTIDAD
+---------
+Nombre: ${diagnostic.name}
+Marca: ${diagnostic.brand}
+Modelo: ${diagnostic.model}
+Serial: ${diagnostic.serialno}
+Build: ${diagnostic.buildNumber}
+
+SOFTWARE
+--------
+Android: ${diagnostic.androidVersion} (API ${diagnostic.sdkVersion})
+Kernel: ${diagnostic.kernelVersion}
+Bootloader: ${diagnostic.bootloader}
+
+HARDWARE
+--------
+CPU: ${diagnostic.processor} (${diagnostic.cpuNum} cores)
+RAM: ${fileSize(diagnostic.memTotal)} (Usada: ${fileSize(diagnostic.memUsed)})
+Almacenamiento: ${fileSize(diagnostic.storageTotal)} (Usado: ${fileSize(diagnostic.storageUsed)})
+Pantalla: ${diagnostic.resolution} (${diagnostic.density} dpi)
+
+BATERÍA
+-------
+Nivel: ${diagnostic.batteryLevel}%
+Voltaje: ${(diagnostic.batteryVoltage / 1000).toFixed(2)}V
+Temperatura: ${diagnostic.batteryTemperature / 10}°C
+
+RED
+---
+Wi-Fi: ${diagnostic.wifi || 'Desconectado'}
+IP: ${diagnostic.ip || 'N/A'}
+MAC: ${diagnostic.mac || 'N/A'}
+
+SISTEMA
+-------
+Uptime: ${durationFormat(diagnostic.uptime, 'd:hh:mm:ss')}
+Root: ${diagnostic.root ? 'Sí' : 'No'}
+Cifrado: ${diagnostic.encryption}
+`
+    const blob = new Blob([content], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `Diagnostico_${diagnostic.model}_${diagnostic.serialno}.txt`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   return (
@@ -181,6 +278,23 @@ export default observer(function Overview() {
         />
         <LunaToolbarSpace />
         <ToolbarIcon
+          icon="time"
+          title="Historial de Dispositivos"
+          onClick={() => setHistoryModalVisible(true)}
+        />
+        <ToolbarIcon
+          icon="shield"
+          title="Auditoría de Seguridad"
+          disabled={!device}
+          onClick={() => setSecurityModalVisible(true)}
+        />
+        <ToolbarIcon
+          icon="save"
+          title="Exportar TXT"
+          disabled={!diagnostic}
+          onClick={exportReport}
+        />
+        <ToolbarIcon
           icon="refresh"
           title={t('refresh')}
           disabled={isLoading || !device}
@@ -196,12 +310,45 @@ export default observer(function Overview() {
         visible={remoteControllerModalVisible}
         onClose={() => setRemoteControllerModalVisible(false)}
       />
+      <HistoryModal
+        visible={historyModalVisible}
+        onClose={() => setHistoryModalVisible(false)}
+      />
+      <SecurityAuditModal
+        visible={securityModalVisible}
+        onClose={() => setSecurityModalVisible(false)}
+      />
+      {toolModal && createPortal(
+        <LunaModal
+          title={toolModal === 'battery' ? '⚡ Batería' : toolModal === 'storage' ? '💾 Almacenamiento' : '📦 Respaldo'}
+          width={850}
+          visible={true}
+          onClose={() => setToolModal(null)}
+        >
+          <div style={{ height: '70vh', position: 'relative', overflowY: 'auto' }}>
+            {toolModal === 'battery' && <Battery />}
+            {toolModal === 'storage' && <Storage />}
+            {toolModal === 'backup' && <Backup />}
+          </div>
+        </LunaModal>,
+        document.body
+      )}
     </div>
   )
 })
 
-function item(title, value, icon = 'info', onDoubleClick?: () => void) {
-  function copyValue() {
+function item(
+  title,
+  value,
+  icon = 'info',
+  onDoubleClick?: () => void,
+  onClick?: () => void
+) {
+  function handleClick() {
+    if (onClick) {
+      onClick()
+      return
+    }
     setTimeout(() => {
       if (hasDoubleClick) {
         return
@@ -216,7 +363,8 @@ function item(title, value, icon = 'info', onDoubleClick?: () => void) {
   return (
     <div
       className={Style.item}
-      onClick={copyValue}
+      onClick={handleClick}
+      style={onClick ? { cursor: 'pointer' } : undefined}
       onDoubleClick={() => {
         if (!onDoubleClick) {
           return

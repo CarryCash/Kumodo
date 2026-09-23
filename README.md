@@ -1,62 +1,32 @@
-<div align="center">
-  <a href="https://aya.liriliri.io/" target="_blank">
-    <img src="https://aya.liriliri.io/icon.png" width="400">
-  </a>
-</div>
+# Copiloto de Reparaciones Celulares (Kumodo)
 
-<h1 align="center">AYA</h1>
+Bienvenido a **Copiloto de Reparaciones Celulares**, una herramienta integral de diagnóstico, mantenimiento y análisis forense para dispositivos móviles basada en ADB.
 
-<div align="center">
+Esta aplicación de escritorio ha sido diseñada específicamente para técnicos de telefonía móvil, ofreciendo una solución "todo en uno" que automatiza y simplifica las tareas más complejas de reparación de software, gestión de aplicaciones y auditoría de dispositivos.
 
-Android ADB desktop app.
+## Características Principales
 
-<a href="https://www.producthunt.com/posts/aya-1?embed=true&utm_source=badge-featured&utm_medium=badge&utm_souce=badge-aya&#0045;1" target="_blank"><img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=899538&theme=light&t=1740125747753" alt="AYA - Open&#0032;source&#0032;desktop&#0032;app&#0032;for&#0032;controlling&#0032;android&#0032;devices | Product Hunt" style="width: 250px; height: 54px;" width="250" height="54" /></a>
+*   **Asistente de Diagnóstico:** Identificación rápida de problemas de software y hardware (batería, almacenamiento, rendimiento).
+*   **Gestión de Dispositivos (Debloater):** Eliminación segura de bloatware y aplicaciones de fábrica para mejorar el rendimiento del dispositivo.
+*   **Copias de Seguridad (Backup):** Respaldo de información del usuario y aplicaciones de forma rápida y estructurada.
+*   **Auditoría de Seguridad y Forense:** Extracción avanzada de volcados de memoria, logs del sistema (Logcat), e inspección de configuraciones de riesgo.
+*   **Puente Inalámbrico ADB:** Conexión y gestión de dispositivos sin necesidad de cables (Wireless Bridge).
+*   **Visor de Multimedia y Archivos:** Explorador potente para transferencia de datos entre el móvil y el PC.
 
-[![Windows][windows-image]][release-url]
-[![macOS][mac-image]][release-url]
-[![Linux][linux-image]][release-url]
-[![Downloads][download-image]][release-url]
-![License][license-image]
+## Instalación y Uso
 
-</div>
+Para obtener instrucciones detalladas sobre cómo configurar el entorno de desarrollo y utilizar el software, consulta la documentación en la carpeta `docs/`:
 
-[windows-image]: https://img.shields.io/badge/-Windows-blue?style=flat-square&logo=windows
-[mac-image]: https://img.shields.io/badge/-macOS-black?style=flat-square&logo=apple
-[linux-image]: https://img.shields.io/badge/-Linux-yellow?style=flat-square&logo=linux
-[download-image]: https://img.shields.io/github/downloads/liriliri/aya/total?style=flat-square
-[release-url]: https://github.com/liriliri/aya/releases
-[license-image]: https://img.shields.io/github/license/liriliri/aya?style=flat-square
+*   [Guía de Instalación](docs/instalacion.md)
+*   [Guía de Usuario Rápida](docs/guia_usuario.md)
+*   [Arquitectura del Sistema](docs/arquitectura.md)
 
-<img src="https://aya.liriliri.io/screencast.png" style="width:100%">
+## Créditos y Agradecimientos
 
-[AYA](https://aya.liriliri.io/) is a desktop application for easily controlling android devices, which can be considered as a GUI wrapper for ADB.
+Este proyecto (gestionado internamente como *Kumodo*) es un fork directo y una extensión del proyecto de código abierto **[AYA (Android ADB Desktop App)](https://github.com/liriliri/aya)**, creado originalmente por **[liriliri](https://github.com/liriliri)**. 
 
-## Installation
+Queremos expresar nuestro profundo agradecimiento a los creadores y contribuyentes de **AYA**, ya que su excelente base, UI (Luna) y herramientas de envoltura para ADB hicieron posible el desarrollo de este Copiloto de Reparaciones. Todo el código base para la exploración de archivos, visualización de pantalla y monitoreo de red fue heredado y adaptado de su gran labor.
 
-Click [here](https://github.com/liriliri/aya/releases/) to download and install AYA. Windows x64, Mac arm64, Mac x64 and Linux x86_64 are supported.
+## Licencia
 
-## Features
-
-<img src="https://aya.liriliri.io/screenshot.png" style="width:100%">
-
-* Screen mirror
-* File explorer
-* Application manager
-* Process monitor
-* Layout inspector
-* CPU, memory and FPS monitor
-* Logcat viewer
-* Interactive shell
-
-For more detailed usage instructions, please read the documentation at [aya.liriliri.io](https://aya.liriliri.io)!
-
-## Related Projects
-
-* [licia](https://github.com/liriliri/licia): Utility library used by AYA.
-* [luna](https://github.com/liriliri/luna): UI components used by AYA.
-* [vivy](https://github.com/liriliri/vivy): Icon image generation.
-* [echo](https://github.com/liriliri/echo): Harmony OS version of AYA.
-
-## Contribution
-
-Read [Contributing Guide](https://aya.liriliri.io/guide/contributing.html) for development setup instructions.
+Este proyecto está sujeto a los términos de licencia original de AYA (AGPL-3.0). Por favor, revisa el archivo correspondiente en el repositorio para más detalles.

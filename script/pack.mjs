@@ -46,7 +46,7 @@ const config = {
   },
   publish: {
     provider: 'generic',
-    url: 'https://release.liriliri.io/',
+    url: 'https://github.com/CarryCash/Copiloto-reparaciones-celulares/releases',
     channel: publishChannel,
   },
 }

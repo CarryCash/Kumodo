@@ -2,6 +2,7 @@ import LunaModal from 'luna-modal/react'
 import LunaSetting, {
   LunaSettingButton,
   LunaSettingCheckbox,
+  LunaSettingInput,
   LunaSettingSelect,
   LunaSettingSeparator,
   LunaSettingTitle,
@@ -88,6 +89,15 @@ export default observer(function SettingsModal(props: IModalProps) {
           value={store.settings.killAdbWhenExit}
           description={t('killAdbWhenExit')}
         />
+        <LunaSettingSeparator />
+        <LunaSettingTitle title="Inteligencia Artificial" />
+        <LunaSettingInput
+          keyName="geminiApiKey"
+          value={store.settings.geminiApiKey}
+          title="Gemini API Key"
+          description="Necesario para el Chat ADB (gemini-3.1-flash-lite)"
+        />
+        <LunaSettingSeparator />
         <LunaSettingButton
           description={t('restartAya')}
           onClick={() => main.relaunch()}

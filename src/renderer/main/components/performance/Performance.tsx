@@ -25,9 +25,11 @@ import isEmpty from 'licia/isEmpty'
 import map from 'licia/map'
 import extend from 'licia/extend'
 import className from 'licia/className'
+import CleanerModal from './CleanerModal'
 
 export default observer(function Performance() {
   const [uptime, setUptime] = useState(0)
+  const [cleanerVisible, setCleanerVisible] = useState(false)
   const dataRef = useRef({
     topPackage: {
       name: '',
@@ -41,6 +43,7 @@ export default observer(function Performance() {
     batteryVoltage: 0,
     cpuLoads: [],
     cpus: [],
+    cpuTemperature: 0,
     fps: 0,
   })
 
@@ -109,7 +112,7 @@ export default observer(function Performance() {
   const batteryLevel = data.batteryLevel + '%'
   const batteryVoltage = `${(data.batteryVoltage / 1000).toFixed(2)}V`
   const batteryTemperature = `${data.batteryTemperature / 10}°C`
-  const batteryTitle = `${batteryVoltage} ${batteryTemperature}`
+  const batteryInfo = `${batteryVoltage} ${batteryTemperature}`
 
   return (
     <div className={className('panel-with-toolbar', Style.container)}>
@@ -119,7 +122,25 @@ export default observer(function Performance() {
         />
         <LunaToolbarSpace />
         <LunaToolbarHtml>
-          <div className={Style.batteryContainer} title={batteryTitle}>
+          <button
+            onClick={() => setCleanerVisible(true)}
+            disabled={!store.device}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: store.device ? 'pointer' : 'not-allowed',
+              color: store.device ? 'var(--color-primary, #1677ff)' : 'var(--color-text-disabled, #999)',
+              fontWeight: 600,
+              fontSize: 13,
+              padding: '0 6px',
+              opacity: store.device ? 1 : 0.5,
+            }}
+          >🧹 Limpieza</button>
+        </LunaToolbarHtml>
+        <LunaToolbarSpace />
+        <LunaToolbarHtml>
+          <div className={Style.batteryContainer}>
+            <span className={Style.batteryInfo}>{batteryInfo}</span>
             <span className={Style.batteryLevel}>{batteryLevel}</span>
             <div className={Style.battery}>
               <div className={Style.batteryHead} />
@@ -133,7 +154,7 @@ export default observer(function Performance() {
       </LunaToolbar>
       <div className={className('panel-body', Style.charts)}>
         <LunaPerformanceMonitor
-          title="CPU"
+          title={`CPU ${data.cpuTemperature}°C`}
           data={cpuData}
           theme={store.theme}
           max={100}
@@ -168,6 +189,9 @@ export default observer(function Performance() {
           color={isDark ? orange6Dark : orange6}
         />
       </div>
+      {cleanerVisible && (
+        <CleanerModal onClose={() => setCleanerVisible(false)} />
+      )}
     </div>
   )
 })

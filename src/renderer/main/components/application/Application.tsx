@@ -28,6 +28,7 @@ import clone from 'licia/clone'
 import LunaModal from 'luna-modal'
 import findIdx from 'licia/findIdx'
 import PackageInfoModal from './PackageInfoModal'
+import DebloaterModal from './DebloaterModal'
 import { IPackageInfo } from 'common/types'
 import defaultIcon from '../../../assets/default-icon.png'
 import contextMenu from 'share/renderer/lib/contextMenu'
@@ -38,14 +39,23 @@ import { useWindowResize } from 'share/renderer/lib/hooks'
 import fileSize from 'licia/fileSize'
 import jsonClone from 'licia/jsonClone'
 
+const DANGER_LABELS: Record<string, string> = {
+  high: '🔴 Alto',
+  medium: '🟡 Medio',
+  low: '🟢 Bajo',
+  none: '✅ Ninguno',
+}
+
 export default observer(function Application() {
   const [isLoading, setIsLoading] = useState(false)
   const [packageInfo, setPackageInfo] = useState<IPackageInfo | null>(null)
   const [packageInfos, setPackageInfos] = useState<IPackageInfo[]>([])
   const [filter, setFilter] = useState('')
+  const [riskFilter, setRiskFilter] = useState<'all' | 'high' | 'medium' | 'battery'>('all')
   const [dropHighlight, setDropHighlight] = useState(false)
   const dataGridRef = useRef<DataGrid>(null)
   const [packageInfoModalVisible, setPackageInfoModalVisible] = useState(false)
+  const [debloaterModalVisible, setDebloaterModalVisible] = useState(false)
   const [isOpenEffectAnimating, setIsOpenEffectAnimating] = useState(false)
   const [openEffectStyle, setOpenEffectStyle] = useState({
     left: 0,
@@ -99,6 +109,25 @@ export default observer(function Application() {
         })
         setPackageInfos(packageInfos)
       }
+      
+      try {
+        const analysisList = await main.getAppAnalysis(device.id)
+        const analysisMap = new Map()
+        for (const app of analysisList) {
+          analysisMap.set(app.packageName, app)
+        }
+        for (const info of packageInfos) {
+          const app = analysisMap.get(info.packageName)
+          if (app) {
+            info.dangerLevel = app.dangerLevel
+            info.suspiciousReasons = app.suspiciousReasons
+            info.permissions = app.permissions
+            info.batteryUser = app.batteryUser
+          }
+        }
+        setPackageInfos([...packageInfos])
+      } catch (e) {}
+
       setIsLoading(false)
     } else {
       const idx = findIdx(
@@ -122,6 +151,18 @@ export default observer(function Application() {
           style,
         }
         iconsRef.current = clone(iconsRef.current)
+        
+        try {
+          const analysisList = await main.getAppAnalysis(device.id)
+          const app = find(analysisList, a => a.packageName === packageName)
+          if (app) {
+            info.dangerLevel = app.dangerLevel
+            info.suspiciousReasons = app.suspiciousReasons
+            info.permissions = app.permissions
+            info.batteryUser = app.batteryUser
+          }
+        } catch (e) {}
+        
         setPackageInfos(clone(packageInfos))
       }
     }
@@ -319,35 +360,43 @@ export default observer(function Application() {
           headerContextMenu={true}
           filter={filter}
           columns={columns}
-          data={map(packageInfos, (info: IPackageInfo) => {
-            return {
-              info,
-              label: toEl(
-                `<span><img src="${info.icon || defaultIcon}" />${
-                  info.label
-                }</span>`
-              ),
-              packageName: info.packageName,
-              versionName: info.versionName,
-              minSdkVersion: info.minSdkVersion,
-              targetSdkVersion: info.targetSdkVersion,
-              storageUsage: fileSize(
-                info.appSize + info.dataSize + info.cacheSize
-              ),
-              appSize: fileSize(info.appSize),
-              dataSize: fileSize(info.dataSize),
-              cacheSize: fileSize(info.cacheSize),
-              enabled: info.enabled ? t('enabled') : t('disabled'),
-              firstInstallTime: dateFormat(
-                new Date(info.firstInstallTime),
-                'yyyy-mm-dd HH:MM:ss'
-              ),
-              lastUpdateTime: dateFormat(
-                new Date(info.lastUpdateTime),
-                'yyyy-mm-dd HH:MM:ss'
-              ),
+          data={map(
+            riskFilter === 'all'
+              ? packageInfos
+              : riskFilter === 'battery'
+                ? packageInfos.filter(i => i.batteryUser)
+                : packageInfos.filter(i => i.dangerLevel === riskFilter),
+            (info: IPackageInfo) => {
+              return {
+                info,
+                label: toEl(
+                  `<span><img src="${info.icon || defaultIcon}" />${
+                    info.label
+                  }</span>`
+                ),
+                packageName: info.packageName,
+                versionName: info.versionName,
+                minSdkVersion: info.minSdkVersion,
+                targetSdkVersion: info.targetSdkVersion,
+                storageUsage: fileSize(
+                  info.appSize + info.dataSize + info.cacheSize
+                ),
+                appSize: fileSize(info.appSize),
+                dataSize: fileSize(info.dataSize),
+                cacheSize: fileSize(info.cacheSize),
+                enabled: info.enabled ? t('enabled') : t('disabled'),
+                riesgo: DANGER_LABELS[info.dangerLevel || 'none'],
+                firstInstallTime: dateFormat(
+                  new Date(info.firstInstallTime),
+                  'yyyy-mm-dd HH:MM:ss'
+                ),
+                lastUpdateTime: dateFormat(
+                  new Date(info.lastUpdateTime),
+                  'yyyy-mm-dd HH:MM:ss'
+                ),
+              }
             }
-          })}
+          )}
           selectable={true}
           uniqueId="packageName"
           onCreate={(dataGrid) => {
@@ -414,9 +463,37 @@ export default observer(function Application() {
           disabled={isLoading}
         />
         <LunaToolbarSeparator />
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 4px' }}>
+          {(['all', 'high', 'medium', 'battery'] as const).map((val) => {
+            const labels = { all: 'Todos', high: '🔴 Alto', medium: '🟡 Medio', battery: '🔋 Batería' }
+            const active = riskFilter === val
+            return (
+              <span
+                key={val}
+                onClick={() => setRiskFilter(val)}
+                style={{
+                  cursor: 'pointer',
+                  padding: '1px 8px',
+                  borderRadius: 10,
+                  fontSize: 11,
+                  fontWeight: active ? 600 : 400,
+                  background: active ? 'var(--color-primary, #1677ff)' : 'transparent',
+                  color: active ? '#fff' : 'inherit',
+                  border: active ? 'none' : '1px solid var(--color-border, #444)',
+                  transition: 'all 0.15s',
+                  userSelect: 'none',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {labels[val]}
+              </span>
+            )
+          })}
+        </span>
         <LunaToolbarText
           text={t('totalPackage', { total: packageInfos.length })}
         />
+
         <LunaToolbarSpace />
         <ToolbarIcon
           icon="add"
@@ -474,6 +551,12 @@ export default observer(function Application() {
         />
         <LunaToolbarSeparator />
         <ToolbarIcon
+          icon="delete"
+          title="Debloater Inteligente (Desinstalar bloatware)"
+          disabled={!device}
+          onClick={() => setDebloaterModalVisible(true)}
+        />
+        <ToolbarIcon
           icon="refresh"
           title={t('refresh')}
           disabled={isLoading || !device}
@@ -494,6 +577,13 @@ export default observer(function Application() {
           onClose={() => setPackageInfoModalVisible(false)}
         />
       )}
+      <DebloaterModal
+        visible={debloaterModalVisible}
+        onClose={() => {
+          setDebloaterModalVisible(false)
+          refresh()
+        }}
+      />
     </div>
   )
 })
@@ -568,6 +658,12 @@ const columns = [
   {
     id: 'enabled',
     title: t('status'),
+    sortable: true,
+    weight: 10,
+  },
+  {
+    id: 'riesgo',
+    title: 'Riesgo',
     sortable: true,
     weight: 10,
   },

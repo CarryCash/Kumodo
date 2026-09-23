@@ -7,6 +7,7 @@ export class Settings {
   adbPath = ''
   killAdbWhenExit = false
   useNativeTitlebar = false
+  geminiApiKey = ''
   constructor() {
     makeObservable(this, {
       language: observable,
@@ -14,6 +15,7 @@ export class Settings {
       adbPath: observable,
       killAdbWhenExit: observable,
       useNativeTitlebar: observable,
+      geminiApiKey: observable,
       set: action,
     })
 
@@ -26,6 +28,7 @@ export class Settings {
       'adbPath',
       'killAdbWhenExit',
       'useNativeTitlebar',
+      'geminiApiKey',
     ]
     for (let i = 0, len = names.length; i < len; i++) {
       const name = names[i]

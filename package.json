@@ -1,7 +1,7 @@
 {
-  "name": "aya",
-  "productName": "AYA",
-  "appId": "io.liriliri.aya",
+  "name": "copiloto-reparaciones",
+  "productName": "Copiloto",
+  "appId": "com.carrycash.copiloto",
   "version": "1.14.2",
   "description": "Android adb desktop app",
   "main": "dist/main/index.js",
@@ -31,7 +31,7 @@
   "keywords": [
     "adb"
   ],
-  "author": "surunzi",
+  "author": "CarryCash",
   "license": "AGPL-3.0",
   "devDependencies": {
     "@aws-sdk/client-s3": "^3.689.0",
@@ -96,5 +96,8 @@
     "webm-muxer": "^5.1.2",
     "xml2js": "^0.6.2",
     "zx": "^8.8.0"
+  },
+  "dependencies": {
+    "luna-drag-selector": "^0.1.0"
   }
 }

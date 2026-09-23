@@ -273,10 +273,11 @@ function transformHierarchy(hierarchy: Document, windowHierarchy: string) {
     } else {
       each(el.childNodes, (child) => transformRecursively(child as Element))
       // for xpath
-      ;(el as any).children = filter(
-        el.childNodes,
-        (child) => child.nodeType === 1
-      )
+      Object.defineProperty(el, 'children', {
+        value: filter(el.childNodes, (child) => child.nodeType === 1),
+        writable: true,
+        configurable: true
+      })
     }
   }
 

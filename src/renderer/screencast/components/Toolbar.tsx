@@ -18,7 +18,11 @@ import dateFormat from 'licia/dateFormat'
 export default observer(function Toolbar() {
   const [settingsModalVisiable, setSettingsModalVisiable] = useState(false)
 
-  const { device, scrcpyClient } = store
+  const { device, scrcpyClient, presentationMode } = store
+
+  if (presentationMode) {
+    return null
+  }
 
   async function captureScreenshot() {
     const video = await scrcpyClient.getVideo()
@@ -120,6 +124,11 @@ export default observer(function Toolbar() {
           icon="fullscreen"
           title={t('fullscreen')}
           onClick={toggleFullscreen}
+        />
+        <ToolbarIcon
+          icon="eye"
+          title="Modo Presentación (Pantalla limpia para demos)"
+          onClick={() => store.togglePresentationMode()}
         />
         <LunaToolbarSpace />
         <ToolbarIcon

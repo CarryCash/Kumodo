@@ -8,34 +8,16 @@ import Performance from './components/performance/Performance'
 import Webview from './components/webview/Webview'
 import Application from './components/application/Application'
 import File from './components/file/File'
+import Media from './components/media/Media'
 import Layout from './components/layout/Layout'
 import Style from './App.module.scss'
-import Modal from 'luna-modal'
-import { t } from 'common/util'
-import { useState, useEffect, PropsWithChildren, FC } from 'react'
+import { useState, PropsWithChildren, FC } from 'react'
 import store from './store'
 import { observer } from 'mobx-react-lite'
+import { useCheckUpdate } from 'share/renderer/lib/hooks'
 
 export default observer(function App() {
-  useEffect(() => {
-    const offUpdateError = main.on('updateError', () => {
-      Modal.alert(t('updateErr'))
-    })
-    const offUpdateNotAvailable = main.on('updateNotAvailable', () => {
-      Modal.alert(t('updateNotAvailable'))
-    })
-    const offUpdateAvailable = main.on('updateAvailable', async () => {
-      const result = await Modal.confirm(t('updateAvailable'))
-      if (result) {
-        main.openExternal('https://aya.liriliri.io')
-      }
-    })
-    return () => {
-      offUpdateError()
-      offUpdateNotAvailable()
-      offUpdateAvailable()
-    }
-  }, [])
+  useCheckUpdate('https://aya.liriliri.io')
 
   return (
     <>
@@ -72,6 +54,9 @@ export default observer(function App() {
             </Panel>
             <Panel panel="file">
               <File />
+            </Panel>
+            <Panel panel="media">
+              <Media />
             </Panel>
             <Panel panel="layout">
               <Layout />
