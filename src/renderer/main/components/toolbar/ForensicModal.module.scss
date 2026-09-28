@@ -1,0 +1,287 @@
+.modalBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--foreground);
+  max-height: 82vh;
+}
+
+// ── Tab Bar ────────────────────────────────────────────────────────────────────
+.tabBar {
+  display: flex;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  flex-wrap: wrap;
+}
+
+.tabBtn {
+  flex: 1;
+  min-width: 110px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 500;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, #94a3b8);
+  cursor: pointer;
+  transition: all 0.18s ease;
+  white-space: nowrap;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--foreground);
+  }
+}
+
+.activeTab {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(59, 130, 246, 0.18)) !important;
+  color: #c4b5fd !important;
+  border: 1px solid rgba(139, 92, 246, 0.4) !important;
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.15);
+}
+
+// ── Toolbar ────────────────────────────────────────────────────────────────────
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.searchInput {
+  background: var(--input-background, rgba(0, 0, 0, 0.2));
+  color: var(--foreground);
+  border: 1px solid var(--border-color);
+  padding: 6px 12px;
+  border-radius: 7px;
+  font-size: 12px;
+  outline: none;
+  width: 220px;
+  transition: border-color 0.15s;
+
+  &:focus {
+    border-color: #8b5cf6;
+  }
+}
+
+.actions {
+  display: flex;
+  gap: 6px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--border-color);
+  background: var(--button-background, rgba(255, 255, 255, 0.06));
+  color: var(--foreground);
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+
+.export {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.35);
+  color: #4ade80;
+
+  &:hover:not(:disabled) {
+    background: rgba(34, 197, 94, 0.22);
+  }
+}
+
+.dangerBtn {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #f87171;
+  padding: 4px 10px;
+  font-size: 11px;
+
+  &:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.25);
+  }
+}
+
+// ── Stats ──────────────────────────────────────────────────────────────────────
+.statsBanner {
+  background: rgba(139, 92, 246, 0.06);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 12px;
+  color: var(--text-secondary, #94a3b8);
+}
+
+// ── Table ──────────────────────────────────────────────────────────────────────
+.tableWrap {
+  overflow-y: auto;
+  max-height: 430px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+
+  th {
+    position: sticky;
+    top: 0;
+    background: var(--panel-header-background, #1a1a24);
+    padding: 8px 12px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--text-secondary, #94a3b8);
+    border-bottom: 1px solid var(--border-color);
+    z-index: 2;
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 7px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    vertical-align: middle;
+  }
+
+  tr:hover td {
+    background: rgba(255, 255, 255, 0.025);
+  }
+
+  tr:last-child td {
+    border-bottom: none;
+  }
+}
+
+.unread td {
+  background: rgba(139, 92, 246, 0.04);
+}
+
+.emptyRow {
+  text-align: center;
+  color: var(--text-secondary, #94a3b8);
+  padding: 32px !important;
+  font-style: italic;
+}
+
+.mono {
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 11px;
+  letter-spacing: 0.3px;
+}
+
+.muted {
+  color: var(--text-secondary, #94a3b8);
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid;
+  background: transparent;
+}
+
+.bodyCell {
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// ── Contact Avatar ──────────────────────────────────────────────────────────────
+.contactAvatar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.avatarIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #8b5cf6, #3b82f6);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+// ── Package info ───────────────────────────────────────────────────────────────
+.pkgInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pkgName {
+  font-weight: 500;
+}
+
+.pkgCode {
+  font-family: monospace;
+  font-size: 10px;
+  color: var(--text-secondary, #94a3b8);
+}
+
+// ── Empty / Loading ────────────────────────────────────────────────────────────
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 60px 20px;
+  color: var(--text-secondary, #94a3b8);
+  font-size: 13px;
+}
+
+.spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid rgba(139, 92, 246, 0.2);
+  border-top-color: #8b5cf6;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// ── Bottom Notice ──────────────────────────────────────────────────────────────
+.notice {
+  font-size: 11px;
+  color: var(--text-secondary, #94a3b8);
+  padding: 6px 10px;
+  background: rgba(245, 158, 11, 0.06);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  border-radius: 6px;
+}

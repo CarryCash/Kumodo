@@ -1,0 +1,96 @@
+import Toolbar from './components/toolbar/Toolbar'
+import Logcat from './components/logcat/Logcat'
+import Shell from './components/shell/Shell'
+import Overview from './components/overview/Overview'
+import Process from './components/process/Process'
+import Performance from './components/performance/Performance'
+import Webview from './components/webview/Webview'
+import Application from './components/application/Application'
+import File from './components/file/File'
+import Media from './components/media/Media'
+import Layout from './components/layout/Layout'
+import Style from './App.module.scss'
+import { useState, PropsWithChildren, FC } from 'react'
+import store from './store'
+import { observer } from 'mobx-react-lite'
+import { useCheckUpdate } from 'share/renderer/lib/hooks'
+
+export default observer(function App() {
+  useCheckUpdate('https://aya.liriliri.io')
+
+  return (
+    <>
+      <Toolbar />
+      {store.ready && (
+        <div className={Style.workspace}>
+          <div
+            className={Style.panels}
+            key={store.device ? store.device.id : ''}
+          >
+            <Panel panel="overview">
+              <Overview />
+            </Panel>
+            <Panel panel="application">
+              <Application />
+            </Panel>
+            <Panel panel="logcat">
+              <Logcat />
+            </Panel>
+            <Panel panel="shell">
+              <Shell />
+            </Panel>
+            <Panel panel="process">
+              <Process />
+            </Panel>
+            <Panel panel="performance">
+              <Performance />
+            </Panel>
+            <Panel panel="webview">
+              <Webview />
+            </Panel>
+            <Panel panel="file">
+              <File />
+            </Panel>
+            <Panel panel="media">
+              <Media />
+            </Panel>
+            <Panel panel="layout">
+              <Layout />
+            </Panel>
+          </div>
+        </div>
+      )}
+    </>
+  )
+})
+
+interface IPanelProps {
+  panel: string
+}
+
+const Panel: FC<PropsWithChildren<IPanelProps>> = observer(function Panel(
+  props
+) {
+  const [used, setUsed] = useState(false)
+
+  let visible = false
+
+  if (store.panel === props.panel) {
+    if (!used) {
+      setUsed(true)
+    }
+    visible = true
+  }
+
+  const style: React.CSSProperties = {}
+  if (!visible) {
+    style.opacity = 0
+    style.pointerEvents = 'none'
+  }
+
+  return (
+    <div className={Style.panel} style={style}>
+      {used ? props.children : null}
+    </div>
+  )
+})

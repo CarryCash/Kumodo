@@ -1,0 +1,73 @@
+@use '../../../theme' as *;
+
+.container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #e5e9f0; /* Fondo gris claro suave */
+  padding: 32px 16px;
+}
+
+.info {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 1000px;
+  padding: 24px 28px;
+  background: #ffffff; /* Tarjeta blanca limpia */
+  border: 1px solid #dcdfe6; /* Borde sutil exterior */
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  row-gap: 20px; /* Espaciado entre filas */
+}
+
+.row {
+  display: flex;
+  width: 100%;
+  flex-direction: row;
+  column-gap: 24px; /* Espaciado horizontal entre las 3 columnas */
+}
+
+.item {
+  flex: 1;
+  min-width: 0; /* Previene desbordamiento de texto */
+  padding: 0;
+  border: none; /* Sin bordes en los ítems individuales */
+  background: transparent;
+  text-align: left;
+
+  [class^='icon-'],
+  [class*=' icon-'] {
+    &::before {
+      position: relative;
+      top: 0;
+      margin-right: 6px;
+      color: #2c3e50; /* Iconos oscuros como en la imagen */
+      font-size: 14px;
+    }
+  }
+}
+
+.title,
+.value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+.title {
+  display: flex;
+  align-items: center;
+  margin-bottom: 2px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #4a5568; /* Color de etiqueta intermedio */
+}
+
+.value {
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: #1a202c; /* Texto principal oscuro */
+}

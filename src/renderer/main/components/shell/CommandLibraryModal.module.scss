@@ -1,0 +1,171 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 4px 0;
+  font-family: inherit;
+}
+
+.searchBar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.searchInput {
+  flex: 1;
+  background: var(--color-bg-container);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 7px 12px;
+  font-size: 13px;
+  color: inherit;
+  outline: none;
+  &:focus {
+    border-color: var(--color-primary);
+  }
+}
+
+.categoryTabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.catBtn {
+  background: var(--color-bg-container);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  color: inherit;
+  transition: all 0.2s;
+  &:hover {
+    border-color: var(--color-primary);
+  }
+  &.active {
+    background: var(--color-primary);
+    color: #fff;
+    border-color: var(--color-primary);
+  }
+}
+
+.commandsList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cmdCard {
+  background: var(--color-bg-container);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  transition: all 0.2s;
+  &:hover {
+    border-color: var(--color-primary);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  }
+}
+
+.cmdInfo {
+  flex: 1;
+  overflow: hidden;
+}
+
+.cmdHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.cmdName {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+
+  &.battery {
+    background: rgba(250, 140, 22, 0.12);
+    color: #fa8c16;
+  }
+  &.system {
+    background: rgba(22, 119, 255, 0.12);
+    color: #1677ff;
+  }
+  &.network {
+    background: rgba(82, 196, 26, 0.12);
+    color: #52c41a;
+  }
+  &.debug {
+    background: rgba(114, 46, 209, 0.12);
+    color: #722ed1;
+  }
+}
+
+.cmdCode {
+  font-family: monospace;
+  font-size: 12px;
+  background: rgba(0, 0, 0, 0.04);
+  padding: 3px 8px;
+  border-radius: 4px;
+  display: inline-block;
+  margin-bottom: 4px;
+  user-select: all;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.cmdDesc {
+  font-size: 11px;
+  opacity: 0.65;
+  line-height: 1.3;
+}
+
+.actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.actionBtn {
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-container);
+  color: inherit;
+  border-radius: 5px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s;
+
+  &:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+  }
+
+  &.run {
+    background: var(--color-primary);
+    color: #fff;
+    border-color: var(--color-primary);
+    &:hover {
+      opacity: 0.9;
+    }
+  }
+}
